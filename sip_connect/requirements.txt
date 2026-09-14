@@ -1,14 +1,6 @@
-fastapi
-uvicorn
-websockets
-qiskit
-cryptography
-pycryptodome
-ephem
-requests
-# Other dependencies from your quantum implementation
-numpy
-pandas
-python-multipart
-paho-mqtt
-
+# sip_connect/ code is covered by the api.txt and crypto.txt layers -
+# see ../requirements/. Kept here (rather than removed) so anything that
+# still does `pip install -r sip_connect/requirements.txt` from within
+# this directory keeps working.
+-r ../requirements/api.txt
+-r ../requirements/crypto.txt

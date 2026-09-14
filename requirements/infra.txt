@@ -1,0 +1,11 @@
+# Infrastructure/services glue: the libp2p bridge's own web server
+# (libp2p/libp2p_bridge.py), data handling, and process/RPC bits used
+# around the Hedera/Fabric integration.
+
+-r base.txt
+
+pandas~=2.2.3
+psutil~=6.1.1
+aiohttp>=3.8.3
+grpcio>=1.47.0
+protobuf>=3.20.1

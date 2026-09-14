@@ -1,0 +1,22 @@
+# Cross-cutting dependencies used by almost every piece of this project
+# (the management API, the quantum services, hedera_bridge.py, etc).
+# Pulled in automatically by every other file in this directory - you
+# normally don't install this on its own.
+
+requests~=2.32.3
+pyyaml==6.0.1
+certifi~=2025.1.31
+urllib3~=2.3.0
+idna~=3.10
+charset-normalizer~=3.4.1
+python-dateutil~=2.9.0.post0
+pytz~=2025.1
+six~=1.15.0
+setuptools~=70.0.0
+typing-extensions>=4.8.0,<=4.12.2
+
+# paho-mqtt is used by both the management API's MQTT test endpoint
+# (management_api/routers/tests.py) and the quantum MQTT client
+# (sip_connect/quantum_mqtt.py), so it lives here rather than in one
+# specific layer.
+paho-mqtt~=2.1.0

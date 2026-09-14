@@ -1,0 +1,41 @@
+# Post-quantum crypto + quantum simulation stack: Falcon/Kyber key
+# generation (sip_connect/hipaa_security.py, falcon_wrapper.py,
+# kyber_wrapper.py) and the qiskit-based entropy generator
+# (sip_connect/quantum_components.py).
+#
+# This is the heaviest install in the project - numpy/scipy/qiskit-aer
+# all compile or pull large binary wheels, which is the most likely
+# place a `pip install` fails on an uncommon Python version or platform.
+# If you only need the management API/dashboard for service status and
+# docker checks, you can skip this file entirely (see requirements/api.txt).
+#
+# Note: even with these installed, actual key *generation* also needs
+# the native Falcon/Kyber libraries compiled for your CPU architecture
+# (sip_connect/compile_falcon_library.sh targets aarch64 by default,
+# plus the equivalent Kyber build under sip_connect/kyber/ref/) - check
+# GET /crypto/status on the management API to see what's actually loaded.
+
+-r base.txt
+
+qiskit~=1.3.2
+qiskit-aer~=0.16.0
+cryptography~=44.0.0
+pycryptodome~=3.21.0
+ephem~=4.1.6
+numpy~=2.0.2
+scipy~=1.13.1
+mpmath~=1.3.0
+sympy~=1.13.3
+symengine~=0.13.0
+rustworkx~=0.16.0
+stevedore~=5.4.0
+pbr~=6.1.0
+dill~=0.3.9
+future~=0.18.3
+cffi~=1.17.1
+pycparser~=2.22
+
+# Build tools needed by qiskit-aer (and useful if you're also compiling
+# the native Falcon/Kyber libraries by hand).
+cmake>=3.18.0
+ninja>=1.10.0

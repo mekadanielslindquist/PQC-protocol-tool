@@ -1,49 +1,12 @@
-fastapi~=0.115.8
-uvicorn~=0.34.0
-websockets~=14.2
-qiskit~=1.3.2
-qiskit_aer
-cryptography~=44.0.0
-pycryptodome~=3.21.0
-ephem~=4.1.6
-requests~=2.32.3
-numpy~=2.0.2
-pandas~=2.2.3
-python-multipart~=0.0.20
-h11~=0.14.0
-pbr~=6.1.0
-setuptools~=70.0.0
-six~=1.15.0
-cffi~=1.17.1
-dill~=0.3.9
-future~=0.18.3
-paho-mqtt~=2.1.0
-pytz~=2025.1
-exceptiongroup~=1.2.2
-sniffio~=1.3.1
-charset-normalizer~=3.4.1
-scipy~=1.13.1
-mpmath~=1.3.0
-sympy~=1.13.3
-symengine~=0.13.0
-python-dateutil~=2.9.0.post0
-psutil~=6.1.1
-rustworkx~=0.16.0
-stevedore~=5.4.0
-certifi~=2025.1.31
-starlette~=0.45.3
-pydantic~=2.10.6
-anyio~=4.8.0
-urllib3~=2.3.0
-click~=8.1.8
-annotated-types~=0.7.0
-idna~=3.10
-pycparser~=2.22
-qiskit-aer~=0.16.0
-cmake>=3.18.0
-ninja>=1.10.0
-pyyaml==6.0.1
-typing-extensions>=4.8.0,<=4.12.2
-aiohttp>=3.8.3
-grpcio>=1.47.0
-protobuf>=3.20.1
+# Full install - everything the project uses anywhere (management API,
+# PQC/quantum crypto, and the infra/services glue). This is what the
+# Dockerfiles install, and it's what you want for a complete local setup.
+#
+# Split out by layer under requirements/ so you can install less when you
+# don't need all of it - e.g. `pip install -r requirements/api.txt` gets
+# the management API + dashboard running without compiling numpy/scipy/
+# qiskit at all. See requirements/*.txt for what's in each and why.
+
+-r requirements/api.txt
+-r requirements/crypto.txt
+-r requirements/infra.txt

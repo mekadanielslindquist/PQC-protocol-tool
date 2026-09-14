@@ -81,6 +81,33 @@ The system implements two quantum-resistant algorithms:
    docker-compose up -d
    ```
 
+### Python dependencies
+
+`requirements.txt` at the repo root installs everything and is what the
+Dockerfiles use. It's split by layer under `requirements/` so you can
+install less when you don't need all of it:
+
+| File | Covers | Notes |
+|---|---|---|
+| `requirements/base.txt` | Shared basics (requests, pyyaml, paho-mqtt, ...) | Pulled in by every file below |
+| `requirements/api.txt` | The management API + dashboard, `sip_connect/app.py` | No compiled deps - installs quickly everywhere |
+| `requirements/crypto.txt` | Falcon/Kyber key generation, qiskit entropy generator | The heavy one (numpy/scipy/qiskit-aer); most likely place a `pip install` fails on an unusual Python version |
+| `requirements/infra.txt` | libp2p bridge, data/RPC glue | |
+
+If you just want the management API and test dashboard running (service
+status, docker checks, key inspection) without fighting a numpy/qiskit
+build:
+
+```bash
+pip install -r requirements/api.txt
+```
+
+For everything, including actual Falcon/Kyber key generation:
+
+```bash
+pip install -r requirements.txt
+```
+
 ## Management API and Test Dashboard
 
 `management_api/` is a small FastAPI service that wraps the scripts and
@@ -88,8 +115,8 @@ containers above so they can be driven over HTTP instead of ad-hoc shell
 commands, and `management_ui/` is a single-page dashboard that talks to it -
 useful for exercising the stack while you're developing against it.
 
-Run it (needs the same Python environment as the rest of the project,
-i.e. `pip install -r requirements.txt`):
+Run it (see "Python dependencies" above for what to install first -
+`requirements/api.txt` is enough to get the dashboard itself running):
 
 ```bash
 python -m uvicorn management_api.main:app --reload --port 8080
