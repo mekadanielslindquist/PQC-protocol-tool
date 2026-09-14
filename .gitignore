@@ -82,6 +82,11 @@ wallet-keys/
 wallet-logs/
 keys/
 certificates/
+quantum_keys/
+orderer.example.com/
+
+# Build artifacts
+*.tar.gz
 
 # Generated files and folders
 minio-data/
