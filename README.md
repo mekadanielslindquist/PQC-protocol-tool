@@ -81,6 +81,66 @@ The system implements two quantum-resistant algorithms:
    docker-compose up -d
    ```
 
+## Management API and Test Dashboard
+
+`management_api/` is a small FastAPI service that wraps the scripts and
+containers above so they can be driven over HTTP instead of ad-hoc shell
+commands, and `management_ui/` is a single-page dashboard that talks to it -
+useful for exercising the stack while you're developing against it.
+
+Run it (needs the same Python environment as the rest of the project,
+i.e. `pip install -r requirements.txt`):
+
+```bash
+python -m uvicorn management_api.main:app --reload --port 8080
+```
+
+Then open `http://localhost:8080/` for the dashboard, or hit the API
+directly - interactive docs are at `http://localhost:8080/docs`.
+
+What it exposes (all under `/api`):
+
+| Endpoint | What it does |
+|---|---|
+| `GET /health` | Liveness check for the API itself |
+| `GET /crypto/status` | Whether the compiled Falcon/Kyber native libraries loaded |
+| `GET /docker/status` | Whether `docker compose ps` is reachable from here |
+| `GET /services` | Status of every service in `docker-compose.yml` (via `docker compose ps` and a TCP port probe, whichever is available) |
+| `GET /services/topology` | Parsed service/port info from `docker-compose.yml` |
+| `GET /keys/organizations` | The organizations this deployment knows about |
+| `GET /keys/{org_id}` | Which key files exist for an org, with public-key fingerprints (never returns private key bytes) |
+| `POST /keys/generate` | Generate a fresh Falcon-1024 + Kyber-512 keypair for `Hospital_A` or `Hospital_B` |
+| `POST /test/mqtt` | Publish a test message to the MQTT broker |
+| `POST /test/blockchain/query` | Run a chaincode query through the `cli` container |
+| `POST /test/hedera/health` | Check the Hedera↔Fabric bridge's own health report |
+
+Everything here is best-effort by design: most of this stack (Fabric
+peers, the MQTT broker, the compiled PQC libraries) usually isn't running
+yet on a fresh checkout, so every endpoint is written to report a clear
+reason ("MQTT broker unreachable at mqtt:1883", "Falcon library not
+compiled for this platform", etc.) instead of crashing. `GET /crypto/status`
+in particular will report `available: false` on most machines until
+`sip_connect/compile_falcon_library.sh` (which targets aarch64) and the
+equivalent Kyber build have been run for your CPU architecture - that's
+expected, not a bug in the API.
+
+## Repository Hygiene
+
+This repo previously had a full Python virtualenv (`sip_connect/.venv`,
+~16k files), generated runtime data (`timescaledb-data/`, `couchdb/`,
+`mosquitto/` data, `logs/`), and real key/certificate material committed to
+git, despite `.gitignore` already listing most of those paths. All of that
+has been removed from tracking (left on disk locally, just no longer
+version-controlled) - see the "Strip vendored venv, generated data, and
+committed secrets from tracking" commit. If you're setting this up fresh:
+
+- Run `pip install -r requirements.txt` to get your own virtualenv/deps.
+- `sip_connect/kyber` and `sip_connect/PQClean` are now real git
+  submodules - run `git submodule update --init --recursive` after
+  cloning.
+- Keys and crypto-config are generated locally by `init-quantum.sh` /
+  `quantum_cryptogen.py`, not shipped in the repo.
+
 ## Configuration Files
 
 - `crypto-config.yaml` - Organization and cryptographic setup

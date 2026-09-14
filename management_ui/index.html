@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PQC Protocol Tool - Control Panel</title>
+<style>
+  :root {
+    --bg: #0f1216;
+    --panel: #171b21;
+    --panel-border: #262b33;
+    --text: #e6e9ef;
+    --muted: #8b93a1;
+    --accent: #5b8cff;
+    --up: #3ecf8e;
+    --down: #ef5b5b;
+    --unknown: #d9a441;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .panel h2 {
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin: 0 0 12px;
+  }
+  .service-list { display: flex; flex-direction: column; gap: 8px; }
+  .service-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 13px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--panel-border);
+  }
+  .service-row:last-child { border-bottom: none; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+  .dot.up { background: var(--up); }
+  .dot.down { background: var(--down); }
+  .dot.unknown { background: var(--unknown); }
+  .service-name { display: flex; align-items: center; }
+  .service-meta { color: var(--muted); font-size: 11px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 4px; }
+  input, select, textarea {
+    width: 100%;
+    background: #0d1014;
+    border: 1px solid var(--panel-border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 7px 9px;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  textarea { min-height: 56px; font-family: ui-monospace, monospace; }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    margin-top: 10px;
+  }
+  button:hover { opacity: 0.9; }
+  button.secondary { background: #2a303a; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  .badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--panel-border);
+    color: var(--muted);
+  }
+  .badge.ok { color: var(--up); border-color: var(--up); }
+  .badge.bad { color: var(--down); border-color: var(--down); }
+  #log {
+    background: #0d1014;
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 12px;
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
+    max-height: 360px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .log-entry { padding: 6px 0; border-bottom: 1px dashed var(--panel-border); }
+  .log-entry:last-child { border-bottom: none; }
+  .log-time { color: var(--muted); }
+  .log-title { color: var(--accent); }
+  .full-width { grid-column: 1 / -1; }
+</style>
+</head>
+<body>
+
+<h1>PQC Protocol Tool &mdash; Control Panel</h1>
+<div class="subtitle">
+  Talks to the management API at <code id="api-base-label"></code>.
+  Nothing here changes what the underlying services do &mdash; it just gives you buttons instead of shell commands.
+</div>
+
+<div class="grid">
+
+  <div class="panel">
+    <h2>API &amp; crypto backend</h2>
+    <div class="service-list" id="self-status">
+      <div class="service-row"><span class="service-name"><span class="dot unknown"></span>Management API</span><span id="api-health" class="badge">checking&hellip;</span></div>
+      <div class="service-row"><span class="service-name"><span class="dot unknown"></span>Falcon/Kyber backend</span><span id="crypto-health" class="badge">checking&hellip;</span></div>
+      <div class="service-row"><span class="service-name"><span class="dot unknown"></span>Docker CLI</span><span id="docker-health" class="badge">checking&hellip;</span></div>
+    </div>
+    <button class="secondary" onclick="refreshAll()">Refresh</button>
+  </div>
+
+  <div class="panel">
+    <h2>docker-compose services</h2>
+    <div class="service-list" id="service-list">
+      <div class="service-row"><span class="service-name">Loading&hellip;</span></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Key management</h2>
+    <label for="key-org">Organization</label>
+    <select id="key-org">
+      <option value="Hospital_A">Hospital_A</option>
+      <option value="Hospital_B">Hospital_B</option>
+    </select>
+    <div class="row">
+      <button class="secondary" onclick="checkKeys()">Check keys</button>
+      <button onclick="generateKeys()">Generate keys</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Test: MQTT publish</h2>
+    <label for="mqtt-org">Organization</label>
+    <select id="mqtt-org">
+      <option value="Hospital_A">Hospital_A</option>
+      <option value="Hospital_B">Hospital_B</option>
+    </select>
+    <label for="mqtt-topic">Topic</label>
+    <input id="mqtt-topic" value="quantum/test">
+    <label for="mqtt-message">Message (JSON)</label>
+    <textarea id="mqtt-message">{"ping": true}</textarea>
+    <button onclick="runMqttTest()">Publish test message</button>
+  </div>
+
+  <div class="panel">
+    <h2>Test: Fabric chaincode query</h2>
+    <label for="bc-channel">Channel</label>
+    <input id="bc-channel" value="mychannel">
+    <label for="bc-chaincode">Chaincode</label>
+    <input id="bc-chaincode" value="quantum_records">
+    <label for="bc-function">Function</label>
+    <input id="bc-function" value="queryAllRecords">
+    <button onclick="runBlockchainTest()">Run query</button>
+  </div>
+
+  <div class="panel">
+    <h2>Test: Hedera bridge health</h2>
+    <label for="hedera-org">Organization</label>
+    <select id="hedera-org">
+      <option value="Hospital_A">Hospital_A</option>
+      <option value="Hospital_B">Hospital_B</option>
+    </select>
+    <button onclick="runHederaTest()">Check health</button>
+  </div>
+
+  <div class="panel full-width">
+    <h2>Results</h2>
+    <div id="log"></div>
+  </div>
+
+</div>
+
+<script>
+const API_BASE = window.location.origin + '/api';
+document.getElementById('api-base-label').textContent = API_BASE;
+
+function log(title, data, ok) {
+  const el = document.getElementById('log');
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  const time = new Date().toLocaleTimeString();
+  const badge = ok === undefined ? '' : (ok ? ' [ok]' : ' [failed]');
+  entry.innerHTML = `<span class="log-time">${time}</span> &mdash; <span class="log-title">${title}${badge}</span>\n` +
+    JSON.stringify(data, null, 2);
+  el.prepend(entry);
+}
+
+async function api(path, options) {
+  const res = await fetch(API_BASE + path, Object.assign({
+    headers: { 'Content-Type': 'application/json' },
+  }, options));
+  let body;
+  try { body = await res.json(); } catch (e) { body = { detail: await res.text() }; }
+  return { ok: res.ok, status: res.status, body };
+}
+
+function setBadge(id, ok, textOk, textBad) {
+  const el = document.getElementById(id);
+  el.textContent = ok ? textOk : textBad;
+  el.className = 'badge ' + (ok ? 'ok' : 'bad');
+}
+
+async function refreshSelfStatus() {
+  const health = await api('/health');
+  setBadge('api-health', health.ok, 'reachable', 'unreachable');
+
+  const crypto = await api('/crypto/status');
+  setBadge('crypto-health', !!crypto.body.available, 'loaded', crypto.body.error ? 'unavailable' : 'unknown');
+
+  const docker = await api('/docker/status');
+  setBadge('docker-health', !!docker.body.docker_cli_available, 'available', 'not reachable here');
+}
+
+async function refreshServices() {
+  const { body } = await api('/services');
+  const list = document.getElementById('service-list');
+  list.innerHTML = '';
+  (body.services || []).forEach(svc => {
+    const row = document.createElement('div');
+    row.className = 'service-row';
+    const portInfo = svc.host_port ? `:${svc.host_port}` : 'no published port';
+    row.innerHTML = `
+      <span class="service-name"><span class="dot ${svc.status}"></span>${svc.service}</span>
+      <span class="service-meta">${svc.status} &middot; ${portInfo}</span>
+    `;
+    list.appendChild(row);
+  });
+}
+
+async function refreshAll() {
+  await Promise.all([refreshSelfStatus(), refreshServices()]);
+}
+
+async function checkKeys() {
+  const org = document.getElementById('key-org').value;
+  const { ok, body } = await api(`/keys/${org}`);
+  log(`Key status: ${org}`, body, ok);
+}
+
+async function generateKeys() {
+  const org = document.getElementById('key-org').value;
+  const { ok, body } = await api('/keys/generate', {
+    method: 'POST',
+    body: JSON.stringify({ org_id: org }),
+  });
+  log(`Generate keys: ${org}`, body, ok);
+}
+
+async function runMqttTest() {
+  const org_id = document.getElementById('mqtt-org').value;
+  const topic = document.getElementById('mqtt-topic').value;
+  let message;
+  try {
+    message = JSON.parse(document.getElementById('mqtt-message').value);
+  } catch (e) {
+    log('MQTT test', { error: 'Message must be valid JSON: ' + e.message }, false);
+    return;
+  }
+  const { ok, body } = await api('/test/mqtt', {
+    method: 'POST',
+    body: JSON.stringify({ org_id, topic, message }),
+  });
+  log('MQTT publish test', body, ok && body.published);
+}
+
+async function runBlockchainTest() {
+  const channel = document.getElementById('bc-channel').value;
+  const chaincode = document.getElementById('bc-chaincode').value;
+  const fn = document.getElementById('bc-function').value;
+  const { ok, body } = await api('/test/blockchain/query', {
+    method: 'POST',
+    body: JSON.stringify({ channel, chaincode, function: fn, args: [] }),
+  });
+  log('Blockchain query', body, ok && body.ok);
+}
+
+async function runHederaTest() {
+  const org_id = document.getElementById('hedera-org').value;
+  const { ok, body } = await api('/test/hedera/health', {
+    method: 'POST',
+    body: JSON.stringify({ org_id }),
+  });
+  log('Hedera bridge health', body, ok && body.ok);
+}
+
+refreshAll();
+setInterval(refreshAll, 15000);
+</script>
+
+</body>
+</html>
