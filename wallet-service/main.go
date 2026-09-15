@@ -3,6 +3,7 @@ package main
 import (
     "fmt"
     "log"
+    "net/http"
 )
 
 type WalletService struct {
@@ -47,6 +48,16 @@ func main() {
         log.Printf("Error processing Hiero payment: %v", err)
     }
 
-    // Keep the service running
-    select {}
+    // Minimal health endpoint so docker-compose's healthcheck (and anything
+    // that depends_on this service with condition: service_healthy, e.g.
+    // hedera-bridge) has something real to check against.
+    http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+        w.WriteHeader(http.StatusOK)
+        w.Write([]byte("ok"))
+    })
+
+    log.Println("Wallet Service listening on :3000")
+    if err := http.ListenAndServe(":3000", nil); err != nil {
+        log.Fatalf("wallet-service HTTP server failed: %v", err)
+    }
 }

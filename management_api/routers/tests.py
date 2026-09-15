@@ -173,3 +173,55 @@ def test_hedera_health(request: HederaHealthRequest):
         except json.JSONDecodeError:
             pass
     return result
+
+
+# --------------------------------------------------------------------------
+# Peer-to-peer: does Fabric's gossip/replication protocol actually work
+# between Hospital_A and Hospital_B, not just "are both containers up"
+# --------------------------------------------------------------------------
+
+class PeerCompareRequest(BaseModel):
+    channel: str = "mychannel"
+
+
+PEER_CONTAINERS = {
+    "Hospital_A": "peer0.Hospital_A.example.com",
+    "Hospital_B": "peer0.Hospital_B.example.com",
+}
+
+
+@router.post("/peers/compare")
+def test_peer_comparison(request: PeerCompareRequest):
+    """Ask each hospital's peer directly (not through `cli`) for its own
+    view of the channel ledger, and compare them.
+
+    This is a real test of the replication protocol between the two
+    peers: if both report the same block height for the same channel,
+    they've actually converged on the same ledger via Fabric's gossip
+    protocol - not just "both containers happen to be running".
+    """
+    results: dict[str, Any] = {}
+    for org, container in PEER_CONTAINERS.items():
+        r = _docker_exec(container, "peer", "channel", "getinfo", "-c", request.channel)
+        parsed = None
+        if r.get("ok") and r.get("stdout"):
+            # `peer channel getinfo` prints log lines followed by a JSON blob.
+            for line in r["stdout"].splitlines():
+                line = line.strip()
+                if line.startswith("{"):
+                    try:
+                        parsed = json.loads(line)
+                    except json.JSONDecodeError:
+                        pass
+                    break
+        results[org] = {**r, "info": parsed}
+
+    heights = {org: r["info"]["height"] for org, r in results.items() if r.get("info") and "height" in r["info"]}
+    in_sync = len(heights) == len(PEER_CONTAINERS) and len(set(heights.values())) == 1
+
+    return {
+        "channel": request.channel,
+        "peers": results,
+        "heights": heights,
+        "in_sync": in_sync,
+    }

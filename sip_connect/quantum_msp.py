@@ -1,4 +1,4 @@
-from _ctypes import POINTER
+from ctypes import POINTER
 from ctypes import c_ubyte, cast
 
 from sip_connect.quantum_components import MelodyQuantumGenerator, EnvironmentalEntropy, DEFAULT_MELODY

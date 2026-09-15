@@ -52,14 +52,28 @@ ENV LD_LIBRARY_PATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/sip_conne
 COPY sip_connect /opt/gopath/src/github.com/hyperledger/fabric/peer/sip_connect/
 COPY quantum_cryptogen.py /opt/gopath/src/github.com/hyperledger/fabric/peer/
 
-# Build Falcon and Kyber
-RUN cd /opt/gopath/src/github.com/hyperledger/fabric/peer/sip_connect/PQClean/crypto_sign/falcon-1024/aarch64 && \
-    make clean && \
-    make VERBOSE=1
+# Build Falcon and Kyber as native shared libraries.
+#
+# The upstream Makefiles here build the wrong artifacts for this project:
+# the falcon-1024/aarch64 Makefile links a NEON-assembly variant into a
+# static .a archive exporting PQCLEAN_FALCON1024_AARCH64_* symbols, but
+# falcon_wrapper.py loads a shared .so and only ever calls the
+# PQCLEAN_FALCON1024_CLEAN_* functions - so we build from the portable
+# "clean" source tree instead and place the .so at the path
+# falcon_wrapper.py expects. Likewise, kyber/ref default make target also
+# builds x86-only benchmark binaries (test/cpucycles.h uses %rdx/rdtsc
+# inline asm) that do not compile on arm64 and are not needed for the
+# shared library, so we compile the library sources directly.
+RUN cd /opt/gopath/src/github.com/hyperledger/fabric/peer/sip_connect/PQClean/crypto_sign/falcon-1024/clean && \
+    cc -shared -fPIC -O2 -std=c99 -I../../../common \
+        codec.c common.c fft.c fpr.c keygen.c pqclean.c rng.c sign.c vrfy.c \
+        ../../../common/fips202.c ../../../common/randombytes.c \
+        -o ../aarch64/libfalcon-1024_aarch64.so
 
 RUN cd /opt/gopath/src/github.com/hyperledger/fabric/peer/sip_connect/kyber/ref && \
-    make clean && \
-    make VERBOSE=1
+    cc -shared -fPIC -Wall -Wextra -Wpedantic -Wmissing-prototypes -Wredundant-decls -Wshadow -Wpointer-arith -O3 -fomit-frame-pointer -DKYBER_K=2 \
+        kem.c indcpa.c polyvec.c poly.c ntt.c cbd.c reduce.c verify.c symmetric-shake.c fips202.c randombytes.c \
+        -o libpqcrystals_kyber512_ref.so
 
 WORKDIR /opt/gopath/src/github.com/hyperledger/fabric/peer
 

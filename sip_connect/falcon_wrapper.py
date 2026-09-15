@@ -1,5 +1,5 @@
 import os
-from _ctypes import POINTER, RTLD_GLOBAL
+from ctypes import POINTER, RTLD_GLOBAL
 from ctypes import cdll, create_string_buffer, c_uint8, c_size_t, byref, c_int, CDLL
 import logging
 

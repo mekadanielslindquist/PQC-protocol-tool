@@ -3,7 +3,7 @@ import hashlib
 import logging
 import json
 import uuid
-from _ctypes import POINTER
+from ctypes import POINTER
 from ctypes import cast, c_ubyte
 from datetime import datetime
 

@@ -12,9 +12,6 @@ x-quantum-service-config: &quantum-service-config
   volumes:
     - ./quantum_srtp:/app/quantum_srtp
     - ./quantum_mqtt:/app/quantum_mqtt
-    - ./sip_connect:/app/sip_connect
-    - ./sip_connect/kyber:/app/sip_connect/kyber
-    - ./sip_connect/PQClean/crypto_sign/falcon-1024/aarch64:/app/sip_connect/PQClean/crypto_sign/falcon-1024/aarch64
     - ./keys:/app/keys
     - ./logs:/app/logs
     - ./certificates:/app/certificates
@@ -56,12 +53,9 @@ services:
       - "8000:8000"
     volumes:
       - ./data:/app/data
-      - ./sip_connect:/app/sip_connect
       - ./quantum_msp_init.py:/app/quantum_msp_init.py
       - ./certificates:/app/certificates
       - ./sip_connect/tls:/app/sip_connect/tls
-      - ./sip_connect/kyber:/app/sip_connect/kyber
-      - ./sip_connect/kyber/ref:/app/sip_connect/kyber/ref
       - ./certificates/Hospital_A_ca.pem:/app/certificates/tls/ca.pem
       - ./certificates/Hospital_A_Secure_Communications_certificate.pem:/app/certificates/tls/cert.pem
       - ./certificates/Hospital_A_Secure_Communications_private_key.pem:/app/certificates/tls/key.pem
@@ -130,7 +124,6 @@ services:
         - ./configs/asterisk/rtp.conf:/etc/asterisk/rtp.conf
         - ./configs/asterisk/sip.conf:/etc/asterisk/sip.conf
         - ./asterisk_modules/res_quantum:/usr/src/asterisk_modules/res_quantum  # Already exists
-        - ./sip_connect:/app/sip_connect
         - ./quantum_srtp:/app/quantum_srtp
         - ./keys:/etc/asterisk/keys
         - ./certificates:/etc/asterisk/certs
@@ -176,10 +169,7 @@ services:
         - ./quantum_services:/app/quantum_services
         - ./certificates:/app/certificates
         - ./quantum_srtp:/app/quantum_srtp
-        - ./sip_connect:/app/sip_connect
         - ./sip_connect/tls:/app/sip_connect/tls
-        - ./sip_connect/kyber:/app/sip_connect/kyber
-        - ./sip_connect/PQClean/crypto_sign/falcon-1024/aarch64:/app/sip_connect/PQClean/crypto_sign/falcon-1024/aarch64
         - ./keys:/app/keys  # Main keys directory
         - ./logs:/app/logs
       environment:
@@ -221,10 +211,7 @@ services:
         - ./quantum_services:/app/quantum_services
         - ./quantum_mqtt:/app/quantum_mqtt
         - ./quantum_srtp:/app/quantum_srtp
-        - ./sip_connect:/app/sip_connect
         - ./sip_connect/tls:/app/sip_connect/tls
-        - ./sip_connect/kyber:/app/sip_connect/kyber
-        - ./sip_connect/PQClean/crypto_sign/falcon-1024/aarch64:/app/sip_connect/PQClean/crypto_sign/falcon-1024/aarch64
         - ./keys:/app/keys  # Main keys directory
         - ./logs:/app/logs
         - ./certificates:/app/certificates
@@ -303,7 +290,6 @@ services:
       dockerfile: Dockerfile.hedera-bridge
     volumes:
       - ./hedera-bridge:/app/hedera-bridge
-      - ./sip_connect:/app/sip_connect
       - ./keys:/app/keys
       - ./logs:/app/logs
       - ./certificates:/app/certificates
@@ -330,13 +316,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.peer
+      args:
+        ORG_NAME: Hospital_A
     healthcheck:
       test: [ "CMD", "bash", "-c", "curl -s http://localhost:9443/healthz || exit 0" ]
       interval: 30s
       timeout: 10s
       retries: 3
     container_name: peer0.Hospital_A.example.com
-    image: hyperledger/fabric-peer:3.0.0
+    image: pqc-protocol-tool-peer0-hospital-a:latest
     platform: linux/arm64
     deploy:
       resources:
@@ -425,13 +413,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.peer
+      args:
+        ORG_NAME: Hospital_B
     healthcheck:
       test: [ "CMD", "bash", "-c", "curl -s http://localhost:9443/healthz || exit 0" ]
       interval: 30s
       timeout: 10s
       retries: 3
     container_name: peer0.Hospital_B.example.com
-    image: hyperledger/fabric-peer:3.0.0
+    image: pqc-protocol-tool-peer0-hospital-b:latest
     platform: linux/arm64
     deploy:
       resources:
@@ -657,7 +647,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-    image: minio/minio
+    image: quay.io/minio/minio:latest
     platform: linux/arm64
     ports:
       - "9000:9000"  # API
@@ -712,7 +702,6 @@ services:
       dockerfile: Dockerfile.libp2p
     volumes:
       - ./libp2p:/app/libp2p
-      - ./sip_connect:/app/sip_connect
       - ./keys:/app/keys
       - ./logs:/app/logs
       - ./certificates:/app/certificates

@@ -1,9 +1,17 @@
 # Build stage
 FROM debian:bullseye-slim AS builder
 
+# Debian bullseye has passed end-of-life; its security packages were pulled
+# from the live mirror. Point apt at the permanent archive mirror instead,
+# and stop apt from rejecting the archive's now-expired Release date.
+RUN sed -i 's|http://deb.debian.org/debian|http://archive.debian.org/debian|g' /etc/apt/sources.list \
+    && sed -i '/bullseye-security/d' /etc/apt/sources.list \
+    && echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99no-check-valid-until
+
 # Install essential build dependencies
 RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    apt-get -y --allow-downgrades dist-upgrade && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-downgrades \
     build-essential \
     wget \
     gcc \
@@ -109,7 +117,16 @@ RUN ls -la /usr/lib/ /usr/local/lib/ /tmp/asterisk-libs/ || true
 # Final stage
 FROM debian:bullseye-slim
 
-RUN apt-get update && apt-get install -y \
+# Debian bullseye has passed end-of-life; its security packages were pulled
+# from the live mirror. Point apt at the permanent archive mirror instead,
+# and stop apt from rejecting the archive's now-expired Release date.
+RUN sed -i 's|http://deb.debian.org/debian|http://archive.debian.org/debian|g' /etc/apt/sources.list \
+    && sed -i '/bullseye-security/d' /etc/apt/sources.list \
+    && echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99no-check-valid-until
+
+RUN apt-get update && \
+    apt-get -y --allow-downgrades dist-upgrade && \
+    apt-get install -y --allow-downgrades \
     libssl1.1 \
     libxml2 \
     libsqlite3-0 \

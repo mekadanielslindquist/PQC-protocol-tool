@@ -133,10 +133,18 @@ def generate_keys_for_org(org_id: str, logger):
             }
         }
 
-        # Save keys for both Hyperledger and Asterisk
-        save_keys(org_id, keys, logger)  # Original Hyperledger save
-        save_asterisk_keys(org_id, keys, logger)  # New Asterisk save
-        create_asterisk_config(org_id, logger)  # Create Asterisk config
+        # Save keys for Hyperledger (required)
+        save_keys(org_id, keys, logger)
+
+        # Asterisk key/config export is only relevant when the Asterisk
+        # service itself is being deployed (currently set aside). Don't let
+        # a host-permission failure here (e.g. no /etc/asterisk on this
+        # machine) abort key generation for the rest of the orgs.
+        try:
+            save_asterisk_keys(org_id, keys, logger)
+            create_asterisk_config(org_id, logger)
+        except Exception as e:
+            logger.warning(f"Skipping Asterisk key export for {org_id} (Asterisk not set up on this host): {str(e)}")
 
         return keys
 
@@ -295,9 +303,6 @@ def main():
             logger.info("Running cryptogen")
             subprocess.run(["cryptogen", "generate", f"--config={args.config}"], check=True)
 
-            logger.info("Verifying MSP structure")
-            verify_msp_structure(logger)
-
             logger.info("Generating orderer keys")
             orderer_keys = generate_orderer_keys(logger)
             save_orderer_keys(orderer_keys, logger)
@@ -307,6 +312,9 @@ def main():
                 logger.info(f"Generating keys for {org}")
                 keys = generate_keys_for_org(org, logger)
 
+            logger.info("Verifying MSP structure")
+            verify_msp_structure(logger)
+
             logger.info("Key generation completed successfully")
 
     except Exception as e:
@@ -314,3 +322,6 @@ def main():
         import traceback
         logger.error(traceback.format_exc())
         sys.exit(1)
+
+if __name__ == "__main__":
+    main()

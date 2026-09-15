@@ -1,17 +1,19 @@
 FROM hyperledger/fabric-peer:3.0.0
 USER root
 
+ARG ORG_NAME=Hospital_A
+
 # Copy quantum keys
-COPY ./keys/Hospital_A_falcon_private.key /etc/hyperledger/fabric/quantum_keys/
-COPY ./keys/Hospital_A_falcon_public.key /etc/hyperledger/fabric/quantum_keys/
-COPY ./keys/Hospital_A_kyber_private.key /etc/hyperledger/fabric/quantum_keys/
-COPY ./keys/Hospital_A_kyber_public.key /etc/hyperledger/fabric/quantum_keys/
+COPY ./keys/${ORG_NAME}_falcon_private.key /etc/hyperledger/fabric/quantum_keys/
+COPY ./keys/${ORG_NAME}_falcon_public.key /etc/hyperledger/fabric/quantum_keys/
+COPY ./keys/${ORG_NAME}_kyber_private.key /etc/hyperledger/fabric/quantum_keys/
+COPY ./keys/${ORG_NAME}_kyber_public.key /etc/hyperledger/fabric/quantum_keys/
 
 # Create symlinks
-RUN ln -s /etc/hyperledger/fabric/quantum_keys/Hospital_A_falcon_private.key /etc/hyperledger/fabric/quantum_keys/falcon_private.key \
-    && ln -s /etc/hyperledger/fabric/quantum_keys/Hospital_A_falcon_public.key /etc/hyperledger/fabric/quantum_keys/falcon_public.key \
-    && ln -s /etc/hyperledger/fabric/quantum_keys/Hospital_A_kyber_private.key /etc/hyperledger/fabric/quantum_keys/kyber_private.key \
-    && ln -s /etc/hyperledger/fabric/quantum_keys/Hospital_A_kyber_public.key /etc/hyperledger/fabric/quantum_keys/kyber_public.key \
+RUN ln -s /etc/hyperledger/fabric/quantum_keys/${ORG_NAME}_falcon_private.key /etc/hyperledger/fabric/quantum_keys/falcon_private.key \
+    && ln -s /etc/hyperledger/fabric/quantum_keys/${ORG_NAME}_falcon_public.key /etc/hyperledger/fabric/quantum_keys/falcon_public.key \
+    && ln -s /etc/hyperledger/fabric/quantum_keys/${ORG_NAME}_kyber_private.key /etc/hyperledger/fabric/quantum_keys/kyber_private.key \
+    && ln -s /etc/hyperledger/fabric/quantum_keys/${ORG_NAME}_kyber_public.key /etc/hyperledger/fabric/quantum_keys/kyber_public.key \
     && chown -R 1000:1000 /etc/hyperledger/fabric/quantum_keys
 
 # Existing commands

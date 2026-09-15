@@ -38,16 +38,18 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the application
 COPY . .
 
-# Build Falcon-1024 for ARM64
-RUN cd sip_connect/PQClean/crypto_sign/falcon-1024/aarch64 && \
-    sed -i 's/CC=arm-linux-gnu-gcc/CC=aarch64-linux-gnu-gcc/' Makefile && \
-    make clean && \
-    make VERBOSE=1 || (echo "Falcon-1024 build failed" && exit 1)
+# Build Falcon-1024 (portable clean source, output placed where the wrapper expects it)
+RUN cd sip_connect/PQClean/crypto_sign/falcon-1024/clean && \
+    cc -shared -fPIC -O2 -std=c99 -I../../../common \
+        codec.c common.c fft.c fpr.c keygen.c pqclean.c rng.c sign.c vrfy.c \
+        ../../../common/fips202.c ../../../common/randombytes.c \
+        -o ../aarch64/libfalcon-1024_aarch64.so || (echo "Falcon-1024 build failed" && exit 1)
 
-# Build Kyber
+# Build Kyber (library only, skipping the x86-only rdtsc benchmark code in test/)
 RUN cd sip_connect/kyber/ref && \
-    make clean && \
-    make VERBOSE=1 || (echo "Kyber build failed" && exit 1)
+    cc -shared -fPIC -Wall -Wextra -Wpedantic -Wmissing-prototypes -Wredundant-decls -Wshadow -Wpointer-arith -O3 -fomit-frame-pointer -DKYBER_K=2 \
+        kem.c indcpa.c polyvec.c poly.c ntt.c cbd.c reduce.c verify.c symmetric-shake.c fips202.c randombytes.c \
+        -o libpqcrystals_kyber512_ref.so || (echo "Kyber build failed" && exit 1)
 
 # Set executable permissions
 RUN chmod +x quantum_services_init.py quantum_msp_init.py

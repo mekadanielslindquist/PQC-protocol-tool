@@ -26,5 +26,14 @@ RUN mkdir -p /app/logs /app/keys
 COPY ./libp2p /app/libp2p
 COPY ./sip_connect /app/sip_connect
 
+# The sip_connect/ tree above includes whatever Falcon/Kyber .so files were
+# already sitting on the host when this image was built - on a Mac those are
+# native macOS (Mach-O) binaries, not something Linux can dlopen ("invalid
+# ELF header"). Recompile both directly from source for this container's
+# actual platform, same approach already proven in Dockerfile/Dockerfile.cli.
+RUN cd sip_connect/PQClean/crypto_sign/falcon-1024/clean &&     gcc -shared -fPIC -O2 -std=c99 -I../../../common         codec.c common.c fft.c fpr.c keygen.c pqclean.c rng.c sign.c vrfy.c         ../../../common/fips202.c ../../../common/randombytes.c         -o ../aarch64/libfalcon-1024_aarch64.so
+
+RUN cd sip_connect/kyber/ref &&     gcc -shared -fPIC -Wall -Wextra -Wpedantic -Wmissing-prototypes -Wredundant-decls -Wshadow -Wpointer-arith -O3 -fomit-frame-pointer -DKYBER_K=2         kem.c indcpa.c polyvec.c poly.c ntt.c cbd.c reduce.c verify.c symmetric-shake.c fips202.c randombytes.c         -o libpqcrystals_kyber512_ref.so
+
 # Default command
 CMD ["python", "-m", "libp2p.libp2p_bridge"]

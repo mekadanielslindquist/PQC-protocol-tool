@@ -14,3 +14,11 @@ COPY . .
 
 # Build the app
 RUN go build -o main .
+
+# curl is needed for docker-compose's healthcheck (CMD curl -f .../health) -
+# the alpine base image doesn't include it by default.
+RUN apk add --no-cache curl
+
+# Actually run the compiled server (this was missing entirely)
+EXPOSE 3000
+CMD ["./main"]
