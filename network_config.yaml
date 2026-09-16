@@ -1,4 +1,22 @@
 Organizations:
+  - &OrdererOrg
+    Name: OrdererOrg
+    ID: OrdererMSP
+    MSPDir: crypto-config/ordererOrganizations/example.com/msp
+    Policies:
+      Readers:
+        Type: Signature
+        Rule: "OR('OrdererMSP.member')"
+      Writers:
+        Type: Signature
+        Rule: "OR('OrdererMSP.member')"
+      Admins:
+        Type: Signature
+        Rule: "OR('OrdererMSP.admin')"
+      Endorsement:
+        Type: Signature
+        Rule: "OR('OrdererMSP.member')"
+
   - &Hospital_A
     Name: Hospital_A
     ID: Hospital_AMSP
@@ -13,15 +31,37 @@ Organizations:
       Admins:
         Type: Signature
         Rule: "OR('Hospital_AMSP.admin')"
+      Endorsement:
+        Type: Signature
+        Rule: "OR('Hospital_AMSP.member')"
     OrdererEndpoints:
       - orderer.example.com:7050
     AnchorPeers:
       - Host: peer0.Hospital_A.example.com
         Port: 7051
-    QuantumMSP:
-      Enabled: true
-      Type: falcon
-      KeyStore: quantum_keys
+
+  - &Hospital_B
+    Name: Hospital_B
+    ID: Hospital_BMSP
+    MSPDir: crypto-config/peerOrganizations/Hospital_B.example.com/msp
+    Policies:
+      Readers:
+        Type: Signature
+        Rule: "OR('Hospital_BMSP.member')"
+      Writers:
+        Type: Signature
+        Rule: "OR('Hospital_BMSP.member')"
+      Admins:
+        Type: Signature
+        Rule: "OR('Hospital_BMSP.admin')"
+      Endorsement:
+        Type: Signature
+        Rule: "OR('Hospital_BMSP.member')"
+    OrdererEndpoints:
+      - orderer.example.com:7050
+    AnchorPeers:
+      - Host: peer0.Hospital_B.example.com
+        Port: 7061
 
 Capabilities:
   Channel: &ChannelCapabilities
@@ -48,6 +88,14 @@ Application: &ApplicationDefaults
 
 Orderer: &OrdererDefaults
     OrdererType: etcdraft
+    Addresses:
+        - orderer.example.com:7050
+    EtcdRaft:
+        Consenters:
+            - Host: orderer.example.com
+              Port: 7050
+              ClientTLSCert: crypto-config/ordererOrganizations/example.com/orderers/orderer.example.com/tls/server.crt
+              ServerTLSCert: crypto-config/ordererOrganizations/example.com/orderers/orderer.example.com/tls/server.crt
     Capabilities:
         <<: *OrdererCapabilities
 
@@ -71,7 +119,7 @@ Profiles:
         Orderer:
             <<: *OrdererDefaults
             Organizations:
-                - *Hospital_A
+                - *OrdererOrg
             Policies:
                 Readers:
                     Type: ImplicitMeta
@@ -86,7 +134,8 @@ Profiles:
             SampleConsortium:
                 Organizations:
                     - *Hospital_A
-    
+                    - *Hospital_B
+
     TwoOrgsChannel:
         Consortium: SampleConsortium
         <<: *ChannelDefaults
@@ -94,6 +143,7 @@ Profiles:
             <<: *ApplicationDefaults
             Organizations:
                 - *Hospital_A
+                - *Hospital_B
             Policies:
                 Readers:
                     Type: ImplicitMeta

@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from management_api.config import PROJECT_ROOT
-from management_api.routers import health, keys, services, tests
+from management_api.routers import fabric, health, keys, services, tests
 
 app = FastAPI(
     title="PQC Protocol Tool - Management API",
@@ -32,6 +32,7 @@ app.include_router(health.router, prefix="/api")
 app.include_router(services.router, prefix="/api")
 app.include_router(keys.router, prefix="/api")
 app.include_router(tests.router, prefix="/api")
+app.include_router(fabric.router, prefix="/api")
 
 _ui_dir = PROJECT_ROOT / "management_ui"
 if _ui_dir.exists():

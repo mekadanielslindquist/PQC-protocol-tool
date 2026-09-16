@@ -54,6 +54,25 @@
   .summary-chip strong { color: var(--text); font-weight: 650; }
   .summary-chip .dot { width: 8px; height: 8px; }
 
+  .tab-bar {
+    display: flex;
+    gap: 8px;
+    margin: 4px 0 20px;
+  }
+  .tab-btn {
+    background: var(--panel);
+    color: var(--muted);
+    border: 1px solid var(--panel-border);
+    border-radius: 999px;
+    padding: 7px 16px;
+    font-size: 13px;
+    cursor: pointer;
+    margin-top: 0;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .panel.tab-hidden { display: none; }
+  #system-health-chart { max-width: 100%; height: auto; display: block; background: #0d1014; border-radius: 6px; }
   .section-heading {
     font-size: 11px;
     text-transform: uppercase;
@@ -227,10 +246,23 @@
 
 <div class="summary-bar" id="summary-bar"></div>
 
+<div class="tab-bar" id="tab-bar">
+  <button class="tab-btn" data-tab-btn="manage" onclick="showTab('manage')">Manage</button>
+  <button class="tab-btn" data-tab-btn="trace" onclick="showTab('trace')">Trace</button>
+  <button class="tab-btn" data-tab-btn="configure" onclick="showTab('configure')">Configure</button>
+</div>
+
 <div class="section-heading">Status</div>
 <div class="grid">
 
-  <div class="panel">
+  <div class="panel full-width" data-tab="trace">
+    <h2>System health over time</h2>
+    <p class="panel-hint" style="margin-top:0;">Share of everything this page tracks (API/crypto/Docker plus every docker-compose service) that reported "up" at each poll, this session (one point per 15s, resets on reload).</p>
+    <canvas id="system-health-chart" width="900" height="140"></canvas>
+    <div id="system-health-caption" class="uptime-pct" style="margin-top:6px;"></div>
+  </div>
+
+  <div class="panel" data-tab="trace">
     <h2>API &amp; crypto backend</h2>
     <div class="service-list" id="self-status">
       <div class="service-row">
@@ -249,13 +281,13 @@
     <button class="secondary" onclick="refreshAll()">Refresh</button>
   </div>
 
-  <div class="panel">
+  <div class="panel" data-tab="trace">
     <h2>Quantum key status</h2>
     <p class="panel-hint">Falcon-1024 (signatures) + Kyber-512 (key exchange) per organization. Fingerprints are the first 16 hex chars of the SHA-256 of each <em>public</em> key &mdash; private key bytes are never sent to this page.</p>
     <div id="key-status-panel">Loading&hellip;</div>
   </div>
 
-  <div class="panel full-width" style="padding-bottom:8px;">
+  <div class="panel full-width" data-tab="trace" style="padding-bottom:8px;">
     <p class="panel-hint" style="margin:0;">
       docker-compose services, split by role so it's not one long list. Showing as down just means the stack isn't started &mdash; run <code>docker compose up -d</code> to bring these up.
       <br>Naming convention: plain names (<code>mqtt</code>, <code>couchdb</code>) are the stock off-the-shelf backing services. The <code>quantum_*</code> services are this project's own code &mdash; they connect to those stock services as clients and wrap the traffic with Falcon/Kyber post-quantum encryption before it goes over the wire.
@@ -263,32 +295,32 @@
     </p>
   </div>
 
-  <div class="panel">
+  <div class="panel" data-tab="trace">
     <h2>Blockchain</h2>
     <div class="service-list" id="svc-group-Blockchain"><div class="service-row"><span class="service-name">Loading&hellip;</span></div></div>
   </div>
 
-  <div class="panel">
+  <div class="panel" data-tab="trace">
     <h2>Quantum-secure comms</h2>
     <div class="service-list" id="svc-group-Quantum-secure-comms"><div class="service-row"><span class="service-name">Loading&hellip;</span></div></div>
   </div>
 
-  <div class="panel">
+  <div class="panel" data-tab="trace">
     <h2>Hedera bridge</h2>
     <div class="service-list" id="svc-group-Hedera-bridge"><div class="service-row"><span class="service-name">Loading&hellip;</span></div></div>
   </div>
 
-  <div class="panel">
+  <div class="panel" data-tab="trace">
     <h2>Networking</h2>
     <div class="service-list" id="svc-group-Networking"><div class="service-row"><span class="service-name">Loading&hellip;</span></div></div>
   </div>
 
-  <div class="panel">
+  <div class="panel" data-tab="trace">
     <h2>Storage / backend</h2>
     <div class="service-list" id="svc-group-Storage"><div class="service-row"><span class="service-name">Loading&hellip;</span></div></div>
   </div>
 
-  <div class="panel" id="svc-group-Other-panel" style="display:none;">
+  <div class="panel" id="svc-group-Other-panel" style="display:none;" data-tab="trace">
     <h2>Other</h2>
     <div class="service-list" id="svc-group-Other"></div>
   </div>
@@ -298,20 +330,35 @@
 <div class="section-heading">Testing tools</div>
 <div class="grid">
 
-  <div class="panel">
+  <div class="panel full-width" data-tab="configure">
+    <h2>Fabric channel</h2>
+    <p class="panel-hint">
+      The channel is created here, not baked into the stack &mdash; nothing else on this page (chaincode queries, peer sync) works until a channel exists.
+      This orderer uses Fabric's channel participation API (<code>osnadmin</code>), so creating a channel means: generate its genesis block from <code>network_config.yaml</code>, join it to the orderer, join both hospital peers, then update both orgs' anchor peers &mdash; all four steps run in order below.
+      Safe to re-run for a channel that already exists.
+    </p>
+    <label for="fabric-channel">Channel name</label>
+    <input id="fabric-channel" value="mychannel" oninput="syncChannelName(this.value)">
+    <div class="row">
+      <button onclick="createChannel()">Create / join channel</button>
+      <button class="secondary" onclick="checkChannelStatus()">Check status</button>
+    </div>
+    <div id="fabric-channel-result" style="margin-top:14px;"></div>
+  </div>
+
+  <div class="panel" data-tab="manage">
     <h2>Key management</h2>
-    <label for="key-org">Organization</label>
-    <select id="key-org">
-      <option value="Hospital_A">Hospital_A</option>
-      <option value="Hospital_B">Hospital_B</option>
-    </select>
+    <p class="panel-hint">Name your own key &mdash; not limited to Hospital_A/Hospital_B. This generates a Falcon-1024 + Kyber-512 keypair under whatever name you give it (a device, a test identity, anything). It does not by itself add a new org to the Fabric network &mdash; that's a bigger change (network_config.yaml + quantum_cryptogen.py).</p>
+    <label for="key-org">Key name</label>
+    <input id="key-org" list="key-org-list" value="Hospital_A" placeholder="e.g. Hospital_A, or any name you choose">
+    <datalist id="key-org-list"></datalist>
     <div class="row">
       <button class="secondary" onclick="checkKeys()">Check keys</button>
       <button onclick="generateKeys()">Generate keys</button>
     </div>
   </div>
 
-  <div class="panel full-width">
+  <div class="panel full-width" data-tab="trace">
     <h2>Test: peer-to-peer ledger sync (Hospital_A &harr; Hospital_B)</h2>
     <p class="panel-hint">Asks each hospital's peer directly &mdash; not through the shared <code>cli</code> helper &mdash; for its own view of the channel. If both report the same block height, Fabric's gossip/replication protocol has actually converged both peers on the same ledger, not just "both containers are running".</p>
     <label for="peer-channel">Channel</label>
@@ -320,7 +367,7 @@
     <div id="peer-compare-result" style="margin-top:14px;"></div>
   </div>
 
-  <div class="panel">
+  <div class="panel" data-tab="manage">
     <h2>Test: MQTT publish</h2>
     <p class="panel-hint">Publishes to the plain <code>mqtt</code> broker as a connectivity smoke test (does not go through the quantum encryption layer &mdash; that needs org keys present, see Key management above).</p>
     <label for="mqtt-org">Organization</label>
@@ -335,7 +382,7 @@
     <button onclick="runMqttTest()">Publish test message</button>
   </div>
 
-  <div class="panel">
+  <div class="panel" data-tab="manage">
     <h2>Test: Fabric chaincode query</h2>
     <label for="bc-channel">Channel</label>
     <input id="bc-channel" value="mychannel">
@@ -346,7 +393,7 @@
     <button onclick="runBlockchainTest()">Run query</button>
   </div>
 
-  <div class="panel">
+  <div class="panel" data-tab="manage">
     <h2>Test: Hedera bridge health</h2>
     <label for="hedera-org">Organization</label>
     <select id="hedera-org">
@@ -356,7 +403,7 @@
     <button onclick="runHederaTest()">Check health</button>
   </div>
 
-  <div class="panel full-width">
+  <div class="panel full-width" data-tab="all">
     <h2>Results</h2>
     <div id="log"></div>
   </div>
@@ -367,7 +414,7 @@
 const API_BASE = window.location.origin + '/api';
 document.getElementById('api-base-label').textContent = API_BASE;
 
-const ORGS = ['Hospital_A', 'Hospital_B'];
+let ORGS = ['Hospital_A', 'Hospital_B'];  // grows as custom-named keys are generated (see refreshKeyStatus)
 
 // --- Uptime history (session-only: lives in this tab's memory, resets on
 // reload since there's no backend time-series store for it yet) ---
@@ -461,6 +508,7 @@ async function refreshSelfStatus() {
 
 let lastServices = [];
 let lastKeyStatus = {};
+const systemHealthHistory = [];  // [0..100, ...] one entry per refreshAll() poll, this session
 
 function updateSummary() {
   const bar = document.getElementById('summary-bar');
@@ -477,6 +525,92 @@ function updateSummary() {
     <div class="summary-chip"><span class="dot ${cryptoOk ? 'up' : 'unknown'}"></span>PQC backend&nbsp;<strong>${cryptoOk ? 'ready' : 'not ready'}</strong></div>
     <div class="summary-chip"><span class="dot ${orgsWithKeys === ORGS.length ? 'up' : 'unknown'}"></span>Orgs with keys&nbsp;<strong>${orgsWithKeys}/${ORGS.length}</strong></div>
   `;
+}
+
+function drawLineChart(canvasId, data, opts) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || !canvas.getContext) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  const min = (opts && opts.min) || 0;
+  const max = (opts && opts.max) || 100;
+  const pad = 24;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Gridlines at 0/50/100%.
+  ctx.strokeStyle = 'rgba(139,147,161,0.15)';
+  ctx.lineWidth = 1;
+  ctx.fillStyle = '#8b93a1';
+  ctx.font = '10px monospace';
+  [0, 0.5, 1].forEach(frac => {
+    const y = pad + (1 - frac) * (h - pad * 2);
+    ctx.beginPath();
+    ctx.moveTo(pad, y);
+    ctx.lineTo(w - 6, y);
+    ctx.stroke();
+    ctx.fillText(`${Math.round(min + frac * (max - min))}%`, 2, y + 3);
+  });
+
+  if (!data.length) {
+    ctx.fillStyle = '#8b93a1';
+    ctx.fillText('Waiting for data\u2026', pad + 4, h / 2);
+    return;
+  }
+
+  const stepX = data.length > 1 ? (w - pad - 10) / (data.length - 1) : 0;
+  const toY = v => pad + (1 - (v - min) / (max - min)) * (h - pad * 2);
+
+  // Filled area under the line.
+  ctx.beginPath();
+  ctx.moveTo(pad, toY(data[0]));
+  data.forEach((v, i) => ctx.lineTo(pad + i * stepX, toY(v)));
+  ctx.lineTo(pad + (data.length - 1) * stepX, h - pad);
+  ctx.lineTo(pad, h - pad);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(91,140,255,0.12)';
+  ctx.fill();
+
+  // The line itself.
+  ctx.beginPath();
+  data.forEach((v, i) => {
+    const x = pad + i * stepX;
+    const y = toY(v);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = '#5b8cff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Most recent point, highlighted.
+  const lastX = pad + (data.length - 1) * stepX;
+  const lastY = toY(data[data.length - 1]);
+  ctx.beginPath();
+  ctx.arc(lastX, lastY, 3, 0, Math.PI * 2);
+  ctx.fillStyle = '#5b8cff';
+  ctx.fill();
+}
+
+function updateSystemHealthChart() {
+  const selfStates = ['api-health', 'crypto-health', 'docker-health']
+    .map(id => document.getElementById(id))
+    .filter(Boolean);
+  const selfUp = selfStates.filter(el => el.classList.contains('ok')).length;
+  const svcUp = lastServices.filter(s => s.status === 'up').length;
+  const total = selfStates.length + lastServices.length;
+  const pct = total > 0 ? Math.round(((selfUp + svcUp) / total) * 100) : null;
+
+  if (pct !== null) {
+    pushHistory(systemHealthHistory, pct);
+  }
+  drawLineChart('system-health-chart', systemHealthHistory, { min: 0, max: 100 });
+
+  const caption = document.getElementById('system-health-caption');
+  if (caption) {
+    caption.textContent = pct === null
+      ? 'No services tracked yet.'
+      : `${pct}% up right now (${selfUp + svcUp}/${total}) \u00b7 ${systemHealthHistory.length} check${systemHealthHistory.length === 1 ? '' : 's'} this session`;
+  }
 }
 
 function orgHasAllKeys(status) {
@@ -555,7 +689,19 @@ function renderKeyStatusPanel() {
   }).join('');
 }
 
+function renderKeyNameSuggestions() {
+  const list = document.getElementById('key-org-list');
+  if (list) list.innerHTML = ORGS.map(name => `<option value="${name}">`).join('');
+}
+
 async function refreshKeyStatus() {
+  const { ok, body } = await api('/keys');
+  if (ok && Array.isArray(body.key_names)) {
+    const merged = new Set(['Hospital_A', 'Hospital_B', ...body.key_names]);
+    ORGS = Array.from(merged);
+  }
+  renderKeyNameSuggestions();
+
   const results = await Promise.all(ORGS.map(org => api(`/keys/${org}`)));
   ORGS.forEach((org, i) => {
     lastKeyStatus[org] = results[i].ok ? results[i].body : { error: true };
@@ -567,6 +713,7 @@ async function refreshKeyStatus() {
 async function refreshAll() {
   await Promise.all([refreshServices(), refreshKeyStatus()]);
   await refreshSelfStatus();
+  updateSystemHealthChart();
 }
 
 async function checkKeys() {
@@ -609,6 +756,76 @@ function renderPeerCompareResult(body) {
     <div class="sync-banner ${bannerClass}">${bannerText}</div>
     <table class="kv-table">${rows}</table>
   `;
+}
+
+function showTab(tab) {
+  document.querySelectorAll(".panel[data-tab]").forEach(el => {
+    const t = el.dataset.tab;
+    el.classList.toggle("tab-hidden", t !== "all" && t !== tab);
+  });
+  document.querySelectorAll(".tab-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.tabBtn === tab);
+  });
+  try { sessionStorage.setItem("pqc-dashboard-tab", tab); } catch (e) { /* private mode, etc - fine to skip */ }
+}
+
+function syncChannelName(value) {
+  const peerInput = document.getElementById('peer-channel');
+  const bcInput = document.getElementById('bc-channel');
+  if (peerInput) peerInput.value = value;
+  if (bcInput) bcInput.value = value;
+}
+
+function renderChannelSteps(data) {
+  const el = document.getElementById('fabric-channel-result');
+  if (!el) return;
+  if (!data || !data.steps) {
+    el.innerHTML = `<div class="sync-banner bad">${(data && data.detail) || 'No response from the API.'}</div>`;
+    return;
+  }
+  const banner = data.ok
+    ? `<div class="sync-banner ok">Channel "${data.channel}" created and both peers joined.</div>`
+    : `<div class="sync-banner bad">${data.detail || `Channel "${data.channel}" setup did not complete - see steps below.`}</div>`;
+  const rows = data.steps.map(step => {
+    const statusText = step.ok ? 'ok' : 'failed';
+    const detail = (step.stderr && step.stderr.trim()) || (step.stdout && step.stdout.trim()) || step.detail || '';
+    return `
+      <tr>
+        <td class="k">${step.name}${step.ok ? '' : ` (${statusText})`}</td>
+        <td class="v">${detail ? detail.slice(-500) : '(no output)'}</td>
+      </tr>
+    `;
+  }).join('');
+  el.innerHTML = `${banner}<table class="kv-table">${rows}</table>`;
+}
+
+async function createChannel() {
+  const channel = document.getElementById('fabric-channel').value;
+  syncChannelName(channel);
+  const el = document.getElementById('fabric-channel-result');
+  if (el) el.innerHTML = `<div class="sync-banner">Creating channel "${channel}"&hellip; this runs configtxgen + osnadmin + two peer joins, can take up to a minute.</div>`;
+  const { ok, body } = await api('/fabric/channel/create', {
+    method: 'POST',
+    body: JSON.stringify({ channel }),
+  });
+  renderChannelSteps(body);
+  log('Create/join Fabric channel', body, ok && body.ok);
+}
+
+async function checkChannelStatus() {
+  const channel = document.getElementById('fabric-channel').value;
+  syncChannelName(channel);
+  const { ok, body } = await api(`/fabric/channel/${encodeURIComponent(channel)}/status`);
+  log('Fabric channel status', body, ok);
+  const el = document.getElementById('fabric-channel-result');
+  if (el && body) {
+    const aOk = body.Hospital_A && body.Hospital_A.ok;
+    const bOk = body.Hospital_B && body.Hospital_B.ok;
+    const banner = aOk && bOk
+      ? `<div class="sync-banner ok">Both peers report channel "${channel}" exists.</div>`
+      : `<div class="sync-banner bad">Hospital_A: ${aOk ? 'has channel' : 'does not have channel'} &middot; Hospital_B: ${bOk ? 'has channel' : 'does not have channel'}</div>`;
+    el.innerHTML = banner;
+  }
 }
 
 async function runPeerCompare() {
@@ -658,6 +875,13 @@ async function runHederaTest() {
   log('Hedera bridge health', body, ok && body.ok);
 }
 
+syncChannelName(document.getElementById('fabric-channel').value);
+let initialTab = 'manage';
+try {
+  const stored = sessionStorage.getItem('pqc-dashboard-tab');
+  if (stored) initialTab = stored;
+} catch (e) { /* private mode, etc - fine to skip */ }
+showTab(initialTab);
 refreshAll();
 setInterval(refreshAll, 15000);
 </script>

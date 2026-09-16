@@ -112,10 +112,22 @@ class QuantumLibP2PBridge:
         try:
             ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
 
-            # Use your organization's certificates
-            cert_path = f"/app/certificates/{self.org_id}_Secure_Communications_certificate.pem"
-            key_path = f"/app/certificates/{self.org_id}_Secure_Communications_private_key.pem"
-            ca_path = f"/app/certificates/{self.org_id}_ca.pem"
+            # Prefer the paths docker-compose.yml actually configures
+            # (TLS_CERT_PATH/TLS_KEY_PATH/TLS_CA_PATH) over guessing from
+            # org_id - these env vars were being set in docker-compose.yml
+            # but never read here, so the cert path used at runtime could
+            # silently diverge from what was actually intended/mounted.
+            cert_path = os.environ.get(
+                "TLS_CERT_PATH",
+                f"/app/certificates/{self.org_id}_Secure_Communications_certificate.pem",
+            )
+            key_path = os.environ.get(
+                "TLS_KEY_PATH",
+                f"/app/certificates/{self.org_id}_Secure_Communications_private_key.pem",
+            )
+            ca_path = os.environ.get(
+                "TLS_CA_PATH", f"/app/certificates/{self.org_id}_ca.pem"
+            )
 
             # Check if paths exist, use default paths if not
             if not os.path.exists(cert_path):

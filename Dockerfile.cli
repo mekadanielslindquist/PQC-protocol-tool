@@ -1,4 +1,4 @@
-FROM --platform=linux/arm64 hyperledger/fabric-tools:latest
+FROM --platform=linux/arm64 hyperledger/fabric-tools:2.5.14
 
 # Install build dependencies and Python
 RUN apt-get update && \

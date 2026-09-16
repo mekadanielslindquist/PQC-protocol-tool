@@ -8,9 +8,21 @@ RUN sed -i 's|http://deb.debian.org/debian|http://archive.debian.org/debian|g' /
     && sed -i '/bullseye-security/d' /etc/apt/sources.list \
     && echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99no-check-valid-until
 
-# Install essential build dependencies
+# Install essential build dependencies.
+#
+# The debian:bullseye-slim base image already has slightly newer
+# point-release libs baked in (e.g. libc6 ...u14) than the exact versions
+# the corresponding -dev packages were built against and hard-pin to (e.g.
+# libc6-dev needs libc6 = ...u11). `dist-upgrade` can't fix this - there's
+# nothing newer to upgrade to, the installed packages are already ahead of
+# what -dev wants. Force those specific packages back down to the exact
+# pinned versions first, then install everything else on top of that.
 RUN apt-get update && \
-    apt-get -y --allow-downgrades dist-upgrade && \
+    apt-get install -y --allow-downgrades \
+    libc6=2.31-13+deb11u11 \
+    liblzma5=5.2.5-2.1~deb11u1 \
+    libssl1.1=1.1.1w-0+deb11u1 \
+    perl-base=5.32.1-4+deb11u3 && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-downgrades \
     build-essential \
     wget \

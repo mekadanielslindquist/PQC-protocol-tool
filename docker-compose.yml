@@ -624,9 +624,12 @@ services:
       - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
       - CORE_PEER_ID=cli
       - CORE_PEER_ADDRESS=peer0.Hospital_A.example.com:7051
-      - CORE_PEER_LOCALMSPID=Org1MSP
-      - CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/Hospital_B.example.com/msp
+      - CORE_PEER_LOCALMSPID=Hospital_AMSP
+      - CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/Hospital_A.example.com/users/Admin@Hospital_A.example.com/msp
+      - CORE_PEER_TLS_ENABLED=true
+      - CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/Hospital_A.example.com/peers/peer0.Hospital_A.example.com/tls/ca.crt
       - CORE_CHAINCODE_KEEPALIVE=10
+      - FABRIC_CFG_PATH=/etc/hyperledger/fabric/config
     working_dir: /opt/gopath/src/github.com/hyperledger/fabric/peer
     command: /bin/bash -c "chmod +x /entrypoint.sh && /entrypoint.sh"
     volumes:
@@ -639,6 +642,14 @@ services:
       - ./quantum_cryptogen.py:/opt/gopath/src/github.com/hyperledger/fabric/peer/quantum_cryptogen.py
       - ./quantum_keys:/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto-config
       - ./config:/etc/hyperledger/fabric/config
+      # configtxgen resolves each org's MSPDir (a relative path in
+      # network_config.yaml/configtx.yaml, e.g.
+      # "crypto-config/peerOrganizations/.../msp") against the directory
+      # holding configtx.yaml itself (FABRIC_CFG_PATH), not against the
+      # peer/crypto mount above - without this, "channel/create" fails
+      # with "could not load a valid ca certificate ... no such file".
+      - ./crypto-config:/etc/hyperledger/fabric/config/crypto-config
+      - ./channel-artifacts:/opt/gopath/src/github.com/hyperledger/fabric/peer/channel-artifacts
 
   minio:
     healthcheck:
@@ -730,7 +741,15 @@ services:
     networks:
       - quantum_sip_default
     healthcheck:
-      test: [ "CMD", "python3", "-c", "import requests; requests.get('https://localhost:8085/health', verify=False)" ]
+      # There's no real TLS cert material anywhere in this repo for this
+      # bridge (certificates/ was just broken empty stub directories left
+      # over from a failed mount - see libp2p_bridge.py's start(), which
+      # correctly falls back to plain HTTP when it can't load a cert
+      # chain). Probing https:// here was checking a protocol the server
+      # was never actually serving, so this always failed regardless of
+      # whether the bridge itself was healthy. Match reality: plain HTTP,
+      # and actually check the status code instead of just "didn't raise".
+      test: [ "CMD", "python3", "-c", "import requests, sys; r = requests.get('http://localhost:8085/health', timeout=5); sys.exit(0 if r.status_code == 200 else 1)" ]
       interval: 30s
       timeout: 10s
       retries: 5

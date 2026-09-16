@@ -84,6 +84,8 @@ keys/
 certificates/
 quantum_keys/
 orderer.example.com/
+channel-artifacts/
+config/configtx.yaml
 
 # Build artifacts
 *.tar.gz
@@ -127,3 +129,4 @@ Thumbs.dbdocker-build.log
 
 # Fabric binaries (installed locally, not committed)
 fabric-samples/
+Claude outputs/

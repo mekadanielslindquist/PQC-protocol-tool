@@ -6,3 +6,9 @@ __pycache__
 .DS_Store
 logs/
 certificates/
+
+# Not needed in any image, and large enough to seriously slow down every
+# build's context transfer - these were never excluded before.
+.venv/
+fabric-samples/
+*.log
