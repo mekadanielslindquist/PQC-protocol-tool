@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 700" role="img" color="#1C1E27" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" aria-label="Diagram showing Organization A and Organization B connected by three communication channels - voice/video, messaging, and peer-to-peer - each wrapped in a post-quantum security layer using Falcon-1024 and Kyber-512, with all three channels anchoring independent proof down to a verification layer made of Hyperledger Fabric and Hedera Hashgraph.">
+  <title>Verified Communications Stack</title>
+  <desc>Two organizations exchange voice/video, messaging, and peer-to-peer traffic over three channels, each individually secured with Falcon-1024 signatures and Kyber-512 key encapsulation. Every channel separately anchors integrity proof down to a two-ledger verification layer (Hyperledger Fabric + Hedera Hashgraph), so neither organization has to trust the other's copy of what was communicated.</desc>
+  <defs>
+    <marker id="arrow-end" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="currentColor" />
+    </marker>
+    <marker id="arrow-start" viewBox="0 0 10 10" refX="2" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M10,0 L0,5 L10,10 Z" fill="currentColor" />
+    </marker>
+    <marker id="arrow-down" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#A8710F" />
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1000" height="700" fill="#F6F4EF" />
+
+  <rect x="30" y="20" width="200" height="62" rx="10" fill="#FFFFFF" stroke="currentColor" stroke-width="1.5"/>
+  <text x="130" y="46" text-anchor="middle" font-size="14" font-weight="700" fill="currentColor">Organization A</text>
+  <text x="130" y="64" text-anchor="middle" font-size="11" fill="#5A5F72">e.g. Hospital A</text>
+
+  <rect x="770" y="20" width="200" height="62" rx="10" fill="#FFFFFF" stroke="currentColor" stroke-width="1.5"/>
+  <text x="870" y="46" text-anchor="middle" font-size="14" font-weight="700" fill="currentColor">Organization B</text>
+  <text x="870" y="64" text-anchor="middle" font-size="11" fill="#5A5F72">e.g. Hospital B</text>
+
+  <line x1="130" y1="82" x2="130" y2="430" stroke="currentColor" stroke-width="1.5"/>
+  <line x1="870" y1="82" x2="870" y2="430" stroke="currentColor" stroke-width="1.5"/>
+
+  <rect x="80" y="160" width="840" height="310" rx="18" fill="rgba(108,92,224,0.08)" stroke="#6C5CE0" stroke-width="1.5"/>
+  <text x="106" y="188" font-family="'SF Mono', Menlo, Consolas, monospace" font-size="12" font-weight="600" letter-spacing="0.08em" fill="#6C5CE0">POST-QUANTUM SECURITY LAYER</text>
+  <text x="106" y="206" font-size="11.5" fill="#5A5F72">Falcon-1024 signatures + Kyber-512 KEM - hybrid with classical crypto, per channel</text>
+
+  <line x1="130" y1="250" x2="870" y2="250" stroke="currentColor" stroke-width="1.5" marker-start="url(#arrow-start)" marker-end="url(#arrow-end)"/>
+  <text x="500" y="236" text-anchor="middle" font-size="13.5" font-weight="600" fill="currentColor">Asterisk PBX &#183; Quantum-Enhanced SRTP</text>
+  <text x="500" y="270" text-anchor="middle" font-size="11.5" fill="#5A5F72">voice &amp; video calls</text>
+
+  <line x1="130" y1="330" x2="870" y2="330" stroke="currentColor" stroke-width="1.5" marker-start="url(#arrow-start)" marker-end="url(#arrow-end)"/>
+  <text x="500" y="316" text-anchor="middle" font-size="13.5" font-weight="600" fill="currentColor">MQTT</text>
+  <text x="500" y="350" text-anchor="middle" font-size="11.5" fill="#5A5F72">device &amp; application messaging</text>
+
+  <line x1="130" y1="410" x2="870" y2="410" stroke="currentColor" stroke-width="1.5" marker-start="url(#arrow-start)" marker-end="url(#arrow-end)"/>
+  <text x="500" y="396" text-anchor="middle" font-size="13.5" font-weight="600" fill="currentColor">libp2p</text>
+  <text x="500" y="430" text-anchor="middle" font-size="11.5" fill="#5A5F72">direct peer-to-peer networking</text>
+
+  <line x1="300" y1="250" x2="300" y2="560" stroke="#A8710F" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrow-down)"/>
+  <line x1="500" y1="330" x2="500" y2="560" stroke="#A8710F" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrow-down)"/>
+  <line x1="700" y1="410" x2="700" y2="560" stroke="#A8710F" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrow-down)"/>
+
+  <text x="312" y="500" font-size="11" font-family="'SF Mono', Menlo, Consolas, monospace" fill="#A8710F">anchors</text>
+  <text x="512" y="500" font-size="11" font-family="'SF Mono', Menlo, Consolas, monospace" fill="#A8710F">anchors</text>
+  <text x="712" y="500" font-size="11" font-family="'SF Mono', Menlo, Consolas, monospace" fill="#A8710F">anchors</text>
+
+  <rect x="80" y="570" width="840" height="110" rx="18" fill="rgba(168,113,15,0.10)" stroke="#A8710F" stroke-width="1.5"/>
+  <text x="106" y="600" font-family="'SF Mono', Menlo, Consolas, monospace" font-size="12" font-weight="600" letter-spacing="0.08em" fill="#A8710F">VERIFICATION LAYER</text>
+  <text x="106" y="626" font-size="15.5" font-weight="700" fill="currentColor">Hyperledger Fabric + Hedera Hashgraph</text>
+  <text x="106" y="648" font-size="11.5" fill="#5A5F72">independent, tamper-evident proof of what was sent, signed, and when</text>
+</svg>

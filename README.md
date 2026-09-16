@@ -13,18 +13,25 @@ state of the Docker stack:
 
 - **Builds and comes up.** All services build clean and reach a running
   state: both Fabric peers, the orderer, `cli`, `couchdb`, `wallet-service`,
-  `asterisk`, `quantum_sip`/`quantum_srtp`/`quantum_mqtt`, and
-  `libp2p-bridge` all start successfully with `docker compose up -d`.
-- **Channel creation is not yet confirmed working end-to-end.**
-  `configtxgen` was hitting a parsing error specific to `Admins` signature
-  policies (`OR('<MSPID>.admin')`) - see Troubleshooting #5 below. A fix
-  (pinning `fabric-tools` to `2.5.14` instead of `:latest`) is in place but
-  not yet verified against a clean channel-creation run.
-- **`libp2p-bridge` runs and is healthy, but peer discovery finds 0 peers.**
-  There is currently only one `libp2p-bridge` service defined (for
-  `Hospital_A`) - there is no `Hospital_B` counterpart for it to discover,
-  so this isn't a config problem so much as a missing second service. See
-  Troubleshooting #4.
+  `asterisk`, `quantum_sip`/`quantum_srtp`/`quantum_mqtt`, and both
+  `libp2p-bridge` services all start successfully with `docker compose up -d`.
+- **Channel creation now works end-to-end.** Getting here meant tracking
+  down five separate, independently-diagnosed bugs in the Fabric config
+  path - underscores in MSP IDs and org names tripping Fabric's
+  config-identifier validators (see Troubleshooting #5), a missing
+  `Orderer:` section and a missing `BlockValidation` policy required by
+  the Channel Participation API, a `configtxgen -asOrg` call that was
+  passing the wrong identifier, and `cli` never being attached to the
+  Docker network the orderer and peers actually use. A channel has been
+  created and joined by both Hospital A and Hospital B peers and verified
+  as `ACTIVE` on a subsequent run. Still open: re-joining an existing
+  channel and pushing anchor-peer updates currently fail on an x509
+  certificate chain error (see Troubleshooting #6) - initial channel
+  creation itself is unaffected.
+- **`libp2p-bridge` peer discovery now works.** Both organizations' bridges
+  discover each other, register, and exchange quantum public keys on every
+  ~60s cycle. See Troubleshooting #4 for what was actually wrong - it
+  wasn't a discovery-logic bug.
 - **`hedera-bridge` runs but has two known protocol bugs** that will stop
   it from actually functioning even though the container itself stays up:
   it's configured to reach `wallet-service` over `https://`, but
@@ -40,8 +47,10 @@ state of the Docker stack:
   as containers sharing one Docker daemon.
 
 None of the above blocks development - the stack is stable enough to work
-against - but "two hospitals actually exchanging quantum-secured,
-ledger-verified communications" hasn't been demonstrated end-to-end yet.
+against, and the two hardest connectivity problems (channel creation and
+peer discovery) are now solved - but "two hospitals actually exchanging
+quantum-secured, ledger-verified communications, on genuinely separate
+infrastructure" hasn't been demonstrated end-to-end yet.
 
 ## Architecture Overview
 
@@ -52,6 +61,10 @@ The system connects healthcare organizations (Hospital A and Hospital B) via mul
 - **Asterisk PBX** - For secure voice/video communication with quantum-enhanced SRTP
 - **MQTT** - For secure messaging with quantum-resistant encryption
 - **Libp2p** - For peer-to-peer networking between organizations
+
+![Verified Communications Stack: two organizations exchanging voice/video, messaging, and peer-to-peer traffic, each channel secured with Falcon-1024 and Kyber-512 and separately anchoring proof to a Hyperledger Fabric + Hedera Hashgraph verification layer](architecture/communication-layers.svg)
+
+*Every channel is independently secured with post-quantum cryptography and separately anchors integrity proof to the verification layer below it - neither organization has to trust the other's copy of what was communicated.*
 
 ### Post-Quantum Cryptography
 
@@ -309,76 +322,117 @@ To fix Asterisk auto-start issues:
    chown -R asterisk:asterisk /etc/asterisk
    ```
 
-### 4. Libp2p Connection Issues (`Discovered 0 peers`)
+### 4. Libp2p Connection Issues (`Discovered 0 peers`) - fixed
 
-As of this writing, `libp2p-bridge` runs and passes its own healthcheck,
-but its peer-discovery loop always logs `Discovered 0 peers`. Diagnosed
-root causes, in order of how much they matter:
+`libp2p-bridge` used to run and pass its own healthcheck while its
+peer-discovery loop always logged `Discovered 0 peers`. Root causes, and
+the fixes:
 
-1. **There's no Hospital_B bridge to find.** `docker-compose.yml` only
-   defines one `libp2p-bridge` service (`ORG_ID=Hospital_A`). Discovery
-   can never succeed until a second bridge service exists for Hospital_B,
-   on its own host or its own container, with `ORG_ID=Hospital_B` and its
-   own key/cert mounts.
+1. **There was no Hospital_B bridge to find.** `docker-compose.yml` only
+   defined one `libp2p-bridge` service (`ORG_ID=Hospital_A`). Fixed by
+   adding a second service, `libp2p-bridge-hospital-b`
+   (`ORG_ID=Hospital_B`, its own ports and key/cert mounts).
 
-2. **`PEER_ADDRESSES` is in the wrong format for the code that reads it.**
-   `libp2p/libp2p_bridge.py`'s `discover_peers()` expects entries shaped
-   like `OrgName:port` (e.g. `Hospital_B:8085`) and builds candidate
-   hostnames itself (`peer0.{org}.example.com`, etc.). The compose file
-   currently sets `PEER_ADDRESSES=peer0.Hospital_B.example.com:7061` - an
-   already-fully-qualified hostname, which the code then wraps *again*,
-   producing a garbled `peer0.peer0.Hospital_B.example.com.example.com`
-   (visible in the container logs). It also points at port `7061`, the
-   Fabric peer's gRPC port - discovery is bridge-to-bridge, so once a
-   Hospital_B bridge exists, this needs to point at *its* HTTP port
-   (`8085`), not the peer's.
+2. **`PEER_ADDRESSES` was in the wrong format for the code that reads
+   it.** `libp2p/libp2p_bridge.py`'s `discover_peers()` expects entries
+   shaped like `OrgName:port` (e.g. `Hospital_B:8085`) and builds
+   candidate hostnames itself. The compose file was setting
+   `PEER_ADDRESSES=peer0.Hospital_B.example.com:7061` - an
+   already-fully-qualified hostname pointed at the Fabric peer's gRPC
+   port - which the code then wrapped *again*, producing a garbled
+   hostname. Fixed by pointing each bridge at the *other* bridge's own
+   hostname and HTTP port (`Hospital_B:8085` / `Hospital_A:8085`).
 
-3. **The `[Errno 21] Is a directory` TLS error is expected, not a bug.**
+3. **Neither bridge hostname actually resolved.** Docker Compose only
+   auto-registers a service's own name in its embedded DNS, and
+   `Hospital_A`/`Hospital_B` aren't service names, they're org IDs. Fixed
+   by giving each bridge service a `networks: quantum_sip_default:
+   aliases: [...]` entry so its org ID resolves to the right container.
+
+4. **The `[Errno 21] Is a directory` TLS error is expected, not a bug.**
    There's no real TLS cert material anywhere in this repo for this
    bridge yet - `certificates/` is empty stub directories. `start()` in
    `libp2p_bridge.py` correctly falls back to plain HTTP when it can't
-   load a cert chain, and the healthcheck was already updated to match
-   (plain `http://localhost:8085/health`, checking the actual status code
-   instead of just "didn't raise"). Don't chase this one until real certs
+   load a cert chain, and the healthcheck matches (plain
+   `http://localhost:8085/health`). Don't chase this one until real certs
    are generated for the bridge.
 
-Once a real Hospital_B host exists (see "Current Status" above), fix #2
-and add its own bridge service per #1 before expecting discovery to work.
+Verified fixed: both bridges' logs now show `Discovered 1 peers`,
+bidirectionally, with mutual registration and quantum-public-key
+retrieval, repeating cleanly every ~60s.
 
-
-### 5. `cli` / `configtxgen` fails on Admin signature policies
+### 5. `cli` / `configtxgen` fails on Admin signature policies - fixed
 
 `configtxgen` (invoked from the `cli` container during channel creation)
-can fail with an error like:
+used to fail with an error like:
 
 ```
 invalid signature policy rule 'OR('Hospital_AMSP.admin')': Unable to
 access unexported field 'admin' in token 'Hospital_AMSP.admin'
 ```
 
-This is *not* a misconfiguration in `network_config.yaml`/`configtx.yaml`
-- the policy syntax (`OR('<MSPID>.admin')`) is standard Fabric, byte-level
-identical in structure to the working `.member` policies right next to it
-in the same file, and NodeOUs is correctly enabled in the org's MSP
-`config.yaml`. The error wording itself ("unable to access unexported
-field ... in token") is the literal error format used by `govaluate` (a Go
-expression-parsing library) - not Fabric's normal policy-parser error
-text - which points at a real, narrow bug in how this Fabric build's
-policy parser handles the `admin` role token specifically (every `.member`
-policy in the same config works fine).
+The real root cause was underscores in Fabric identifiers, not a
+`fabric-tools` version mismatch (an earlier `2.5.14` pin was based on a
+wrong theory and has been reverted). Two separate bugs, same underlying
+cause:
 
-`hyperledger/fabric-tools` was never released past `2.5.16` on Docker Hub
-- there is no `3.0.0` tag for it, even though `fabric-peer` and
-`fabric-orderer` do have one and this project uses `3.0.0` for both. So
-`Dockerfile.cli`'s `FROM hyperledger/fabric-tools:latest` (`2.5.16`) is
-running a full major version behind the rest of the stack, with no exact
-match available. `Dockerfile.cli` is currently pinned to
-`hyperledger/fabric-tools:2.5.14` as a test of whether this is a
-regression specific to a recent 2.5.x patch - **not yet confirmed working**
-against a real channel-creation run. If `2.5.14` hits the same error, the
-bug predates that patch and this needs a different workaround (possibly
-restructuring how the `Admins` policy is expressed, or building
-`configtxgen` from source).
+1. **MSP IDs.** Fabric's policy parser
+   (`common/policydsl/policyparser.go`) matches role tokens like
+   `<MSPID>.admin` against the regex `^([[:alnum:].-]+)([.])(role)$`
+   before handing the result to `govaluate`, a Go expression library.
+   `[[:alnum:]]` is letters-and-digits only - no underscore - so an MSP
+   ID like `Hospital_AMSP` fails the regex, falls through unreplaced, and
+   `govaluate` tries to evaluate the literal string as Go reflection,
+   producing the exact "unable to access unexported field" error above.
+   Fixed by renaming MSP IDs to remove the underscore -
+   `Hospital_AMSP`/`Hospital_BMSP` to `HospitalAMSP`/`HospitalBMSP` - in
+   `config/configtx.yaml`, `network_config.yaml`, `config/config.yaml`,
+   `management_api/routers/fabric.py`, `fabric_commands.sh`, and
+   `network/organizations/crypto-config.yaml`.
+
+2. **Org config names.** A second, separate validator - this one only
+   runs when the orderer processes a submitted channel config block, not
+   at `configtxgen` genesis-block-generation time - rejects underscores
+   in the org's `Name:` field (used as the channel config's group map
+   key), failing with `config ID 'Hospital_A' contains illegal
+   characters`. Fixed by renaming the org `Name:` fields -
+   `Hospital_A`/`Hospital_B` to `HospitalA`/`HospitalB`. Hostnames,
+   `MSPDir:` paths, Docker service names, and the `Hospital_A`/`Hospital_B`
+   org IDs used elsewhere in the codebase (key filenames, API
+   parameters, the management UI) were left untouched - they never pass
+   through either of these validators.
+
+Fixing #1 and #2 surfaced two more Channel-Participation-API-specific
+gaps, also now fixed: the `TwoOrgsChannel` profile was missing an
+`Orderer:` section (required because this project's orderer runs with no
+system channel, so `configtxgen -outputBlock` needs a self-contained
+genesis block with its own consensus config), and both orderer profiles
+were missing the required `BlockValidation` policy. There was also a
+separate, unrelated bug in `configtxgen -asOrg`: it expects the org's
+`Name:` field, not its MSP ID, and `management_api/routers/fabric.py`
+was passing the MSP ID - fixed by adding a dedicated `ORG_NAMES` lookup.
+
+Verified fixed: a channel ("mychannelthree") was created end-to-end, with
+both Hospital A and Hospital B peers joining successfully.
+
+### 6. Channel re-join / anchor-peer update fails with an x509 certificate error
+
+Initial channel creation and join now work end-to-end (#5 above), but
+re-joining an already-created channel, or pushing an anchor-peer update,
+currently fails with `x509: certificate signed by unknown authority`.
+TCP connectivity itself is confirmed fine (`docker exec cli bash -c "echo
+> /dev/tcp/orderer.example.com/7050"` returns `TCP_OK`), so this is
+specifically a certificate-chain verification failure during the
+orderer's TLS handshake and/or `osnadmin channel join`'s
+cluster-membership check - the orderer's own consenter TLS certificate
+isn't verifying against the channel config's referenced CA
+(`tlsca.example.com`). Related but separate: the orderer's general
+listener also requires mutual TLS
+(`ORDERER_GENERAL_TLS_CLIENTAUTHREQUIRED=true`), and a client that
+doesn't present a client certificate (e.g. `cli`'s `peer channel update`)
+gets a server-side handshake failure and a client-side timeout rather
+than a connection-refused error - worth ruling out separately from the
+CA-chain issue above if you hit a timeout here. Not yet resolved.
 
 ## Integration Testing
 
