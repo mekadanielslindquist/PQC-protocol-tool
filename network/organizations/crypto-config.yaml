@@ -1,17 +1,17 @@
 Organizations:
   - Name: Hospital_A
-    ID: Hospital_AMSP
+    ID: HospitalAMSP
     MSPDir: organizations/hospital_a/msp
     Policies:
       Readers:
         Type: Signature
-        Rule: "OR('Hospital_AMSP.member')"
+        Rule: "OR('HospitalAMSP.member')"
       Writers:
         Type: Signature
-        Rule: "OR('Hospital_AMSP.member')"
+        Rule: "OR('HospitalAMSP.member')"
       Admins:
         Type: Signature
-        Rule: "OR('Hospital_AMSP.admin')"
+        Rule: "OR('HospitalAMSP.admin')"
     OrdererEndpoints:
       - orderer.example.com:7050
     AnchorPeers:
@@ -19,18 +19,18 @@ Organizations:
         Port: 7051
 
   - Name: Hospital_B
-    ID: Hospital_BMSP
+    ID: HospitalBMSP
     MSPDir: organizations/hospital_b/msp
     Policies:
       Readers:
         Type: Signature
-        Rule: "OR('Hospital_BMSP.member')"
+        Rule: "OR('HospitalBMSP.member')"
       Writers:
         Type: Signature
-        Rule: "OR('Hospital_BMSP.member')"
+        Rule: "OR('HospitalBMSP.member')"
       Admins:
         Type: Signature
-        Rule: "OR('Hospital_BMSP.admin')"
+        Rule: "OR('HospitalBMSP.admin')"
     OrdererEndpoints:
       - orderer.example.com:7050
     AnchorPeers:

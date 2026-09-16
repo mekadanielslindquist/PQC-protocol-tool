@@ -85,7 +85,6 @@ certificates/
 quantum_keys/
 orderer.example.com/
 channel-artifacts/
-config/configtx.yaml
 
 # Build artifacts
 *.tar.gz

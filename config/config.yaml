@@ -78,7 +78,7 @@ peer:
         KeyStore:
 
   mspConfigPath: msp
-  localMspId: Hospital_AMSP
+  localMspId: HospitalAMSP
   client:
     connTimeout: 3s
 

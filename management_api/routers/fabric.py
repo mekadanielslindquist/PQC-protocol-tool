@@ -32,7 +32,14 @@ router = APIRouter(prefix="/fabric", tags=["fabric"])
 
 DOCKER_EXEC_TIMEOUT_SECONDS = 45
 
-ORG_MSP_IDS = {"Hospital_A": "Hospital_AMSP", "Hospital_B": "Hospital_BMSP"}
+ORG_MSP_IDS = {"Hospital_A": "HospitalAMSP", "Hospital_B": "HospitalBMSP"}
+
+# configtxgen's -asOrg flag wants the org's "Name:" field from configtx.yaml
+# (the channel config group key), NOT its MSP ID - passing the MSP ID there
+# fails with "org with name 'HospitalAMSP' does not exist in config". Two
+# different identifiers for the same org; keep both maps rather than derive
+# one from the other.
+ORG_NAMES = {"Hospital_A": "HospitalA", "Hospital_B": "HospitalB"}
 
 CLI_PEER_ROOT = "/opt/gopath/src/github.com/hyperledger/fabric/peer"
 ORDERER_TLS_CA = f"{CLI_PEER_ROOT}/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/tls/ca.crt"
@@ -44,7 +51,7 @@ ORDERER_ADMIN_CLIENT_KEY = f"{CLI_PEER_ROOT}/crypto/ordererOrganizations/example
 # override that identity the same way install_chaincode() in
 # fabric_commands.sh already does for chaincode approval.
 HOSPITAL_B_ENV = [
-    "-e", "CORE_PEER_LOCALMSPID=Hospital_BMSP",
+    "-e", "CORE_PEER_LOCALMSPID=HospitalBMSP",
     "-e", f"CORE_PEER_MSPCONFIGPATH={CLI_PEER_ROOT}/crypto/peerOrganizations/Hospital_B.example.com/users/Admin@Hospital_B.example.com/msp",
     "-e", f"CORE_PEER_TLS_ROOTCERT_FILE={CLI_PEER_ROOT}/crypto/peerOrganizations/Hospital_B.example.com/peers/peer0.Hospital_B.example.com/tls/ca.crt",
     "-e", "CORE_PEER_ADDRESS=peer0.Hospital_B.example.com:7061",
@@ -174,7 +181,7 @@ def create_channel(request: ChannelCreateRequest):
         run(
             f"generate anchor peer update tx ({org})",
             "cli", "configtxgen", "-profile", "TwoOrgsChannel",
-            "-outputAnchorPeersUpdate", anchor_tx, "-channelID", channel, "-asOrg", msp_id,
+            "-outputAnchorPeersUpdate", anchor_tx, "-channelID", channel, "-asOrg", ORG_NAMES[org],
         )
 
     if hosp_a_joined:
@@ -182,7 +189,7 @@ def create_channel(request: ChannelCreateRequest):
             "update Hospital_A anchor peers",
             "cli", "peer", "channel", "update",
             "-o", "orderer.example.com:7050", "-c", channel,
-            "-f", f"channel-artifacts/Hospital_AMSPanchors_{channel}.tx",
+            "-f", f"channel-artifacts/HospitalAMSPanchors_{channel}.tx",
             "--tls", "--cafile", ORDERER_TLS_CA,
         )
 
@@ -192,7 +199,7 @@ def create_channel(request: ChannelCreateRequest):
             *HOSPITAL_B_ENV,
             "cli", "peer", "channel", "update",
             "-o", "orderer.example.com:7050", "-c", channel,
-            "-f", f"channel-artifacts/Hospital_BMSPanchors_{channel}.tx",
+            "-f", f"channel-artifacts/HospitalBMSPanchors_{channel}.tx",
             "--tls", "--cafile", ORDERER_TLS_CA,
         )
 

@@ -346,7 +346,7 @@ services:
       - CORE_PEER_LISTENADDRESS=0.0.0.0:7051
       - CORE_PEER_CHAINCODEADDRESS=peer0.Hospital_A.example.com:7052
       - CORE_PEER_CHAINCODELISTENADDRESS=0.0.0.0:7052
-      - CORE_PEER_LOCALMSPID=Hospital_AMSP
+      - CORE_PEER_LOCALMSPID=HospitalAMSP
 
       # Gossip Configuration
       - CORE_PEER_GOSSIP_BOOTSTRAP=peer0.Hospital_A.example.com:7051
@@ -443,7 +443,7 @@ services:
       - CORE_PEER_LISTENADDRESS=0.0.0.0:7061
       - CORE_PEER_CHAINCODEADDRESS=peer0.Hospital_B.example.com:7062
       - CORE_PEER_CHAINCODELISTENADDRESS=0.0.0.0:7062
-      - CORE_PEER_LOCALMSPID=Hospital_BMSP
+      - CORE_PEER_LOCALMSPID=HospitalBMSP
 
       # Gossip Configuration
       - CORE_PEER_GOSSIP_BOOTSTRAP=peer0.Hospital_B.example.com:7061
@@ -624,7 +624,7 @@ services:
       - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
       - CORE_PEER_ID=cli
       - CORE_PEER_ADDRESS=peer0.Hospital_A.example.com:7051
-      - CORE_PEER_LOCALMSPID=Hospital_AMSP
+      - CORE_PEER_LOCALMSPID=HospitalAMSP
       - CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/Hospital_A.example.com/users/Admin@Hospital_A.example.com/msp
       - CORE_PEER_TLS_ENABLED=true
       - CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/Hospital_A.example.com/peers/peer0.Hospital_A.example.com/tls/ca.crt
@@ -650,6 +650,15 @@ services:
       # with "could not load a valid ca certificate ... no such file".
       - ./crypto-config:/etc/hyperledger/fabric/config/crypto-config
       - ./channel-artifacts:/opt/gopath/src/github.com/hyperledger/fabric/peer/channel-artifacts
+    # This service had no "networks:" entry at all, which silently put it
+    # on Docker Compose's implicit default network (pqc-protocol-tool_default)
+    # instead of the quantum_sip_default network everything else (orderer,
+    # both peers, both libp2p bridges) actually uses - so cli could never
+    # resolve any of them by hostname. It just never surfaced until channel
+    # creation got far enough to need osnadmin/peer to actually reach the
+    # orderer and peers over the network.
+    networks:
+      - quantum_sip_default
 
   minio:
     healthcheck:
@@ -722,12 +731,20 @@ services:
     environment:
       - PYTHONPATH=/app:/app/sip_connect
       - ORG_ID=Hospital_A
-      # Fixed peer address format with correct port
-      - PEER_ADDRESSES=peer0.Hospital_B.example.com:7061
+      # discover_peers() in libp2p_bridge.py parses this as "<org_id>:<port>"
+      # and hits the SIBLING BRIDGE's own HTTP API at that port (org_id is
+      # templated into a handful of candidate hostnames, then GET .../node_id
+      # is tried against each). This is not a Fabric peer address - pointing
+      # it at the peer's gRPC port (7051/7061) can never work, since the
+      # bridge speaks plain HTTP, not gRPC. org_id must also resolve via
+      # Docker DNS, which is why the network alias below matches it exactly.
+      - PEER_ADDRESSES=Hospital_B:8085
       - FABRIC_GATEWAY_URL=https://peer0.Hospital_A.example.com:7051
       - USE_TLS=true
-      # Additional configuration for more reliable connections
-      - LIBP2P_BOOTSTRAP_PEERS=/ip4/peer0.Hospital_B.example.com/tcp/7061
+      # Not currently read by libp2p_bridge.py (peer discovery goes through
+      # PEER_ADDRESSES/HTTP above, not a real libp2p swarm dial yet) - kept
+      # accurate rather than deleted in case swarm-level dialing is added.
+      - LIBP2P_BOOTSTRAP_PEERS=/dns4/Hospital_B/tcp/4001
       - LIBP2P_CONNECTION_TIMEOUT=30000
       - LIBP2P_CONNECTION_MANAGER_LOW_WATER=5
       - LIBP2P_CONNECTION_MANAGER_HIGH_WATER=20
@@ -739,7 +756,12 @@ services:
       - RETRY_INTERVAL=5
       - MAX_RETRIES=10
     networks:
-      - quantum_sip_default
+      quantum_sip_default:
+        # Registers "Hospital_A" as a resolvable hostname on this network,
+        # so Hospital_B's bridge (PEER_ADDRESSES=Hospital_A:8085) can find
+        # this container by org_id over Docker's embedded DNS.
+        aliases:
+          - Hospital_A
     healthcheck:
       # There's no real TLS cert material anywhere in this repo for this
       # bridge (certificates/ was just broken empty stub directories left
@@ -749,6 +771,59 @@ services:
       # was never actually serving, so this always failed regardless of
       # whether the bridge itself was healthy. Match reality: plain HTTP,
       # and actually check the status code instead of just "didn't raise".
+      test: [ "CMD", "python3", "-c", "import requests, sys; r = requests.get('http://localhost:8085/health', timeout=5); sys.exit(0 if r.status_code == 200 else 1)" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    depends_on:
+      peer0.Hospital_A.example.com:
+        condition: service_healthy
+      peer0.Hospital_B.example.com:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Hospital B's counterpart to the bridge above. Only one org had a
+  # libp2p-bridge service before this - peer discovery could never succeed
+  # no matter how PEER_ADDRESSES was formatted, because nothing was
+  # listening on the other end. This is still one Mac standing in for two
+  # organizations (real cross-org independence needs Hospital_B's
+  # infrastructure to move onto its own host - tracked separately), but it
+  # lets the discovery/registration code path itself be verified end-to-end.
+  libp2p-bridge-hospital-b:
+    build:
+      context: .
+      dockerfile: Dockerfile.libp2p
+    volumes:
+      - ./libp2p:/app/libp2p
+      - ./keys:/app/keys
+      - ./logs:/app/logs
+      - ./certificates:/app/certificates
+    ports:
+      - "4002:4001"
+      - "8086:8085"
+    environment:
+      - PYTHONPATH=/app:/app/sip_connect
+      - ORG_ID=Hospital_B
+      - PEER_ADDRESSES=Hospital_A:8085
+      - FABRIC_GATEWAY_URL=https://peer0.Hospital_B.example.com:7051
+      - USE_TLS=true
+      - LIBP2P_BOOTSTRAP_PEERS=/dns4/Hospital_A/tcp/4001
+      - LIBP2P_CONNECTION_TIMEOUT=30000
+      - LIBP2P_CONNECTION_MANAGER_LOW_WATER=5
+      - LIBP2P_CONNECTION_MANAGER_HIGH_WATER=20
+      - QUANTUM_ENHANCED_P2P=true
+      - DEBUG_LEVEL=DEBUG
+      - TLS_CERT_PATH=/app/certificates/Hospital_B_Secure_Communications_certificate.pem
+      - TLS_KEY_PATH=/app/certificates/Hospital_B_Secure_Communications_private_key.pem
+      - TLS_CA_PATH=/app/certificates/ca.pem
+      - RETRY_INTERVAL=5
+      - MAX_RETRIES=10
+    networks:
+      quantum_sip_default:
+        aliases:
+          - Hospital_B
+    healthcheck:
       test: [ "CMD", "python3", "-c", "import requests, sys; r = requests.get('http://localhost:8085/health', timeout=5); sys.exit(0 if r.status_code == 200 else 1)" ]
       interval: 30s
       timeout: 10s

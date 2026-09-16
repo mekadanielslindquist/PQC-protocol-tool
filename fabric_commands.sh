@@ -5,7 +5,7 @@
 # Set environment variables
 export FABRIC_CFG_PATH=${PWD}/config
 export CORE_PEER_TLS_ENABLED=true
-export CORE_PEER_LOCALMSPID=Hospital_AMSP
+export CORE_PEER_LOCALMSPID=HospitalAMSP
 export CORE_PEER_TLS_ROOTCERT_FILE=${PWD}/crypto-config/peerOrganizations/Hospital_A.example.com/peers/peer0.Hospital_A.example.com/tls/ca.crt
 export CORE_PEER_MSPCONFIGPATH=${PWD}/crypto-config/peerOrganizations/Hospital_A.example.com/users/Admin@Hospital_A.example.com/msp
 export CORE_PEER_ADDRESS=localhost:7051
@@ -29,8 +29,8 @@ generate_genesis() {
     configtxgen -profile TwoOrgsChannel -outputCreateChannelTx ./channel-artifacts/channel.tx -channelID mychannel
 
     # Generate anchor peer updates
-    configtxgen -profile TwoOrgsChannel -outputAnchorPeersUpdate ./channel-artifacts/Hospital_AMSPanchors.tx -channelID mychannel -asOrg Hospital_AMSP
-    configtxgen -profile TwoOrgsChannel -outputAnchorPeersUpdate ./channel-artifacts/Hospital_BMSPanchors.tx -channelID mychannel -asOrg Hospital_BMSP
+    configtxgen -profile TwoOrgsChannel -outputAnchorPeersUpdate ./channel-artifacts/HospitalAMSPanchors.tx -channelID mychannel -asOrg HospitalA
+    configtxgen -profile TwoOrgsChannel -outputAnchorPeersUpdate ./channel-artifacts/HospitalBMSPanchors.tx -channelID mychannel -asOrg HospitalB
 
     echo "Genesis block and channel transaction generated"
 }
@@ -70,7 +70,7 @@ create_channel() {
 
     # Update anchor peers
     docker exec cli peer channel update -o orderer.example.com:7050 -c mychannel \
-        -f /opt/gopath/src/github.com/hyperledger/fabric/peer/channel-artifacts/Hospital_AMSPanchors.tx \
+        -f /opt/gopath/src/github.com/hyperledger/fabric/peer/channel-artifacts/HospitalAMSPanchors.tx \
         --tls --cafile $ORDERER_CA
 
     echo "Channel created and joined"
@@ -94,7 +94,7 @@ install_chaincode() {
         --sequence 1 --tls --cafile $ORDERER_CA
 
     # Switch to org2 context to approve chaincode
-    docker exec -e CORE_PEER_LOCALMSPID=Hospital_BMSP \
+    docker exec -e CORE_PEER_LOCALMSPID=HospitalBMSP \
         -e CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/Hospital_B.example.com/peers/peer0.Hospital_B.example.com/tls/ca.crt \
         -e CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/Hospital_B.example.com/users/Admin@Hospital_B.example.com/msp \
         -e CORE_PEER_ADDRESS=peer0.Hospital_B.example.com:7061 \
