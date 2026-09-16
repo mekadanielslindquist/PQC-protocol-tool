@@ -6,6 +6,43 @@ https://github.com/user-attachments/assets/113ddce1-e744-4be9-b4b7-4c4ee51ac121
 
 This project implements a quantum-resistant healthcare information exchange platform using Hyperledger Fabric and Hedera Hashgraph, with post-quantum cryptography (PQC) integrated throughout all communication layers.
 
+## Current Status (as of September 2026)
+
+This is an actively developed prototype, not a production system. Current
+state of the Docker stack:
+
+- **Builds and comes up.** All services build clean and reach a running
+  state: both Fabric peers, the orderer, `cli`, `couchdb`, `wallet-service`,
+  `asterisk`, `quantum_sip`/`quantum_srtp`/`quantum_mqtt`, and
+  `libp2p-bridge` all start successfully with `docker compose up -d`.
+- **Channel creation is not yet confirmed working end-to-end.**
+  `configtxgen` was hitting a parsing error specific to `Admins` signature
+  policies (`OR('<MSPID>.admin')`) - see Troubleshooting #5 below. A fix
+  (pinning `fabric-tools` to `2.5.14` instead of `:latest`) is in place but
+  not yet verified against a clean channel-creation run.
+- **`libp2p-bridge` runs and is healthy, but peer discovery finds 0 peers.**
+  There is currently only one `libp2p-bridge` service defined (for
+  `Hospital_A`) - there is no `Hospital_B` counterpart for it to discover,
+  so this isn't a config problem so much as a missing second service. See
+  Troubleshooting #4.
+- **`hedera-bridge` runs but has two known protocol bugs** that will stop
+  it from actually functioning even though the container itself stays up:
+  it's configured to reach `wallet-service` over `https://`, but
+  `wallet-service` only serves plain HTTP; and `FABRIC_GATEWAY_URL` points
+  at a Fabric peer's raw gRPC port, while `hedera_bridge.py` makes plain
+  REST calls (`requests.post(...)`) against it - gRPC doesn't speak REST,
+  so those calls fail regardless of the URL scheme.
+- **Only one organization's infrastructure is real right now.** Hospital A
+  runs everything on one machine; Hospital B isn't yet a truly independent
+  node. The plan is to stand up Hospital B on its own host (an Oracle Cloud
+  Always Free ARM instance, matching this project's existing
+  `linux/arm64` platform target) rather than simulating both organizations
+  as containers sharing one Docker daemon.
+
+None of the above blocks development - the stack is stable enough to work
+against - but "two hospitals actually exchanging quantum-secured,
+ledger-verified communications" hasn't been demonstrated end-to-end yet.
+
 ## Architecture Overview
 
 The system connects healthcare organizations (Hospital A and Hospital B) via multiple secure communication channels:
@@ -272,32 +309,76 @@ To fix Asterisk auto-start issues:
    chown -R asterisk:asterisk /etc/asterisk
    ```
 
-### 4. Libp2p Connection Issues
+### 4. Libp2p Connection Issues (`Discovered 0 peers`)
 
-To resolve Libp2p connection issues with Hospital B:
+As of this writing, `libp2p-bridge` runs and passes its own healthcheck,
+but its peer-discovery loop always logs `Discovered 0 peers`. Diagnosed
+root causes, in order of how much they matter:
 
-1. Check libp2p configuration in docker-compose.yml:
-   ```yaml
-   libp2p-bridge:
-     environment:
-       # Update peer addresses with correct port
-       - PEER_ADDRESSES=Hospital_B:7061
-       # Ensure TLS is properly configured
-       - USE_TLS=true
-   ```
+1. **There's no Hospital_B bridge to find.** `docker-compose.yml` only
+   defines one `libp2p-bridge` service (`ORG_ID=Hospital_A`). Discovery
+   can never succeed until a second bridge service exists for Hospital_B,
+   on its own host or its own container, with `ORG_ID=Hospital_B` and its
+   own key/cert mounts.
 
-2. Check network connectivity:
-   ```bash
-   # Test connectivity to Hospital B libp2p port
-   docker exec -it libp2p-bridge ping peer0.Hospital_B.example.com
-   docker exec -it libp2p-bridge nc -zv peer0.Hospital_B.example.com 7061
-   ```
+2. **`PEER_ADDRESSES` is in the wrong format for the code that reads it.**
+   `libp2p/libp2p_bridge.py`'s `discover_peers()` expects entries shaped
+   like `OrgName:port` (e.g. `Hospital_B:8085`) and builds candidate
+   hostnames itself (`peer0.{org}.example.com`, etc.). The compose file
+   currently sets `PEER_ADDRESSES=peer0.Hospital_B.example.com:7061` - an
+   already-fully-qualified hostname, which the code then wraps *again*,
+   producing a garbled `peer0.peer0.Hospital_B.example.com.example.com`
+   (visible in the container logs). It also points at port `7061`, the
+   Fabric peer's gRPC port - discovery is bridge-to-bridge, so once a
+   Hospital_B bridge exists, this needs to point at *its* HTTP port
+   (`8085`), not the peer's.
 
-3. Check for proper certificate setup:
-   ```bash
-   # Verify TLS certificates
-   ls -la certificates/Hospital_B.example.com/
-   ```
+3. **The `[Errno 21] Is a directory` TLS error is expected, not a bug.**
+   There's no real TLS cert material anywhere in this repo for this
+   bridge yet - `certificates/` is empty stub directories. `start()` in
+   `libp2p_bridge.py` correctly falls back to plain HTTP when it can't
+   load a cert chain, and the healthcheck was already updated to match
+   (plain `http://localhost:8085/health`, checking the actual status code
+   instead of just "didn't raise"). Don't chase this one until real certs
+   are generated for the bridge.
+
+Once a real Hospital_B host exists (see "Current Status" above), fix #2
+and add its own bridge service per #1 before expecting discovery to work.
+
+
+### 5. `cli` / `configtxgen` fails on Admin signature policies
+
+`configtxgen` (invoked from the `cli` container during channel creation)
+can fail with an error like:
+
+```
+invalid signature policy rule 'OR('Hospital_AMSP.admin')': Unable to
+access unexported field 'admin' in token 'Hospital_AMSP.admin'
+```
+
+This is *not* a misconfiguration in `network_config.yaml`/`configtx.yaml`
+- the policy syntax (`OR('<MSPID>.admin')`) is standard Fabric, byte-level
+identical in structure to the working `.member` policies right next to it
+in the same file, and NodeOUs is correctly enabled in the org's MSP
+`config.yaml`. The error wording itself ("unable to access unexported
+field ... in token") is the literal error format used by `govaluate` (a Go
+expression-parsing library) - not Fabric's normal policy-parser error
+text - which points at a real, narrow bug in how this Fabric build's
+policy parser handles the `admin` role token specifically (every `.member`
+policy in the same config works fine).
+
+`hyperledger/fabric-tools` was never released past `2.5.16` on Docker Hub
+- there is no `3.0.0` tag for it, even though `fabric-peer` and
+`fabric-orderer` do have one and this project uses `3.0.0` for both. So
+`Dockerfile.cli`'s `FROM hyperledger/fabric-tools:latest` (`2.5.16`) is
+running a full major version behind the rest of the stack, with no exact
+match available. `Dockerfile.cli` is currently pinned to
+`hyperledger/fabric-tools:2.5.14` as a test of whether this is a
+regression specific to a recent 2.5.x patch - **not yet confirmed working**
+against a real channel-creation run. If `2.5.14` hits the same error, the
+bug predates that patch and this needs a different workaround (possibly
+restructuring how the `Admins` policy is expressed, or building
+`configtxgen` from source).
 
 ## Integration Testing
 
