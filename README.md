@@ -1,10 +1,10 @@
-# Quantum-Secure Healthcare Blockchain Network
+# Quantum-Secure Blockchain Network
 
 
 https://github.com/user-attachments/assets/113ddce1-e744-4be9-b4b7-4c4ee51ac121
 
 
-This project implements a quantum-resistant healthcare information exchange platform using Hyperledger Fabric and Hedera Hashgraph, with post-quantum cryptography (PQC) integrated throughout all communication layers.
+This project implements a quantum-resistant hypothetical healthcare information exchange platform using Hyperledger Fabric and Hedera Hashgraph, with post-quantum cryptography (PQC) integrated throughout all communication layers.
 
 ## Architecture Overview
 
