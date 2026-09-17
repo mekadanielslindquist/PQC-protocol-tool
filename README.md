@@ -189,6 +189,7 @@ What it exposes (all under `/api`):
 | `POST /keys/generate` | Generate a fresh Falcon-1024 + Kyber-512 keypair for `Hospital_A` or `Hospital_B` |
 | `POST /test/mqtt` | Publish a test message to the MQTT broker |
 | `POST /test/blockchain/query` | Run a chaincode query through the `cli` container |
+| `POST /fabric/chaincode/deploy` | Package, install, approve, and commit a chaincode on a channel |
 | `POST /test/hedera/health` | Check the Hedera↔Fabric bridge's own health report |
 
 Everything here is best-effort by design: most of this stack (Fabric
@@ -200,6 +201,33 @@ in particular will report `available: false` on most machines until
 `sip_connect/compile_falcon_library.sh` (which targets aarch64) and the
 equivalent Kyber build have been run for your CPU architecture - that's
 expected, not a bug in the API.
+
+## Ops Agent & Deployment Playbook
+
+`agents/ops_agent/agent.py` is a standalone script (calls the Anthropic API directly, not through Claude Code
+or Cowork) that watches the docker-compose stack via the management API above and decides whether to notify a
+human or attempt one narrow, safe recovery action. It never has a tool that can stop, remove, or tear down
+anything - see the script's own docstring/system prompt for the exact policy.
+
+```bash
+python -m agents.ops_agent.agent --check          # run one check-and-act pass
+python -m agents.ops_agent.agent --add-guidance "message" [--sticky]   # leave it a note for next run(s)
+python -m agents.ops_agent.agent --list-guidance
+```
+
+Requires `ANTHROPIC_API_KEY` in the environment or `.env` (see `.env.example`) - and note it needs installing
+into whichever `python`/`pip` actually runs `management_api` (typically the project's `.venv`), not just
+whatever `python3` happens to be on your terminal's PATH, if you also want the dashboard's "Run check now"
+button under the Agents tab to work.
+
+The dashboard's Agents tab surfaces this agent's tracked state and lets you leave it guidance notes directly.
+The underlying `/api/ops/*` endpoints (status/logs/up/agent state/guidance) aren't listed in the table above -
+see `management_api/routers/ops.py`, or `/docs` while the API is running.
+
+None of this is specific to this project's healthcare/PQC domain - the environment-level issues it exists to
+handle (Docker PATH resolution, a wedged Docker Desktop daemon, multiarch library paths, how to build a
+tool-bounded self-healing agent) apply to any Hyperledger Fabric + docker-compose deployment on macOS. That
+knowledge is written up generally in `skills/hyperledger-fabric-ops-agent/` for reuse on future deployments.
 
 ## Repository Hygiene
 
