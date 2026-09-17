@@ -1,0 +1,5 @@
+# agents/ - standalone scripts that call the Anthropic API directly
+# (not part of the management API or the crypto/infra layers). Kept
+# separate since it's the one place in this project that talks to
+# Claude's own API rather than Fabric/Hedera/PQC libraries.
+anthropic>=0.40.0

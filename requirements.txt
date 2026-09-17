@@ -10,3 +10,4 @@
 -r requirements/api.txt
 -r requirements/crypto.txt
 -r requirements/infra.txt
+-r requirements/agents.txt

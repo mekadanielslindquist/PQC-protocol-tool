@@ -15,6 +15,12 @@ def list_services():
     reporting "unknown" just means neither signal was available - for
     example this API running outside Docker against a service with no
     published port (quantum_srtp, quantum_mqtt, hedera-bridge, cli).
+
+    Note: the TCP probe can read "up" for a service whose real container
+    is gone, if a stale port-forwarder from a previous container instance
+    is still holding the host port open (seen for real on this machine).
+    For automation, prefer GET /api/ops/status, which reports Docker's
+    actual container state instead of inferring it from port reachability.
     """
     return {"services": all_service_statuses()}
 

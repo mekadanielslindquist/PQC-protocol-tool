@@ -129,3 +129,8 @@ Thumbs.dbdocker-build.log
 # Fabric binaries (installed locally, not committed)
 fabric-samples/
 Claude outputs/
+
+# Agent runtime state (local to this machine, not source)
+agents/**/.alert_state.json
+agents/**/.guidance.json
+management_api/.ops_alert_state.json

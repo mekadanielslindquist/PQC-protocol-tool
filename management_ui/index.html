@@ -21,6 +21,8 @@
     --down-soft: rgba(232, 102, 79, 0.10);
     --unknown: #d9a441;
     --unknown-soft: rgba(217, 164, 65, 0.12);
+    --agent-correlator: #1fa8a0;
+    --agent-correlator-soft: rgba(31, 168, 160, 0.12);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
   * { box-sizing: border-box; }
@@ -94,6 +96,9 @@
     border-radius: 12px;
     padding: 18px;
     box-shadow: 0 1px 0 rgba(255,255,255,0.02) inset, 0 8px 20px -12px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+    min-height: 230px;
   }
   .panel h2 {
     font-size: 13px;
@@ -203,6 +208,12 @@
   }
   .sync-banner.ok { color: var(--up); border-color: rgba(62,207,142,0.35); background: var(--up-soft); }
   .sync-banner.bad { color: var(--down); border-color: rgba(232,102,79,0.35); background: var(--down-soft); }
+  .result-box {
+    margin-top: auto;
+    padding-top: 14px;
+  }
+  .result-box:empty { padding-top: 0; }
+  .result-box .sync-banner { max-height: 140px; overflow-y: auto; margin-bottom: 0; }
   #log {
     background: #0d1014;
     border: 1px solid var(--panel-border);
@@ -233,6 +244,14 @@
   .uptime-pct { color: var(--muted-2); font-size: 10.5px; margin-top: 2px; }
   .service-row { flex-direction: column; align-items: stretch; }
   .service-row-top { display: flex; align-items: center; justify-content: space-between; }
+  .agent-stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--panel-border); border: 1px solid var(--panel-border); border-radius: 8px; overflow: hidden; margin: 12px 0 16px; }
+  @media (min-width: 640px) { .agent-stat-grid { grid-template-columns: repeat(4, 1fr); } }
+  .agent-stat-tile { background: var(--panel); padding: 10px 12px; }
+  .agent-stat-value { font-family: ui-monospace, "SF Mono", monospace; font-variant-numeric: tabular-nums; font-size: 19px; font-weight: 650; color: var(--text); line-height: 1.2; }
+  .agent-stat-label { font-size: 10.5px; color: var(--muted); margin-top: 2px; }
+  .agent-lane-label { font-family: ui-monospace, "SF Mono", monospace; font-size: 10.5px; fill: var(--muted); }
+  .agent-tick-label { font-family: ui-monospace, "SF Mono", monospace; font-size: 9.5px; fill: var(--muted-2); }
+  .agent-mark-label { font-family: -apple-system, sans-serif; font-size: 10px; fill: var(--text); font-weight: 550; }
 </style>
 </head>
 <body>
@@ -250,6 +269,8 @@
   <button class="tab-btn" data-tab-btn="manage" onclick="showTab('manage')">Manage</button>
   <button class="tab-btn" data-tab-btn="trace" onclick="showTab('trace')">Trace</button>
   <button class="tab-btn" data-tab-btn="configure" onclick="showTab('configure')">Configure</button>
+  <button class="tab-btn" data-tab-btn="api" onclick="showTab('api')">API Explorer</button>
+  <button class="tab-btn" data-tab-btn="agents" onclick="showTab('agents')">Agents</button>
 </div>
 
 <div class="section-heading">Status</div>
@@ -343,7 +364,7 @@
       <button onclick="createChannel()">Create / join channel</button>
       <button class="secondary" onclick="checkChannelStatus()">Check status</button>
     </div>
-    <div id="fabric-channel-result" style="margin-top:14px;"></div>
+    <div id="fabric-channel-result" class="result-box"></div>
   </div>
 
   <div class="panel" data-tab="manage">
@@ -359,12 +380,12 @@
   </div>
 
   <div class="panel full-width" data-tab="trace">
-    <h2>Test: peer-to-peer ledger sync (Hospital_A &harr; Hospital_B)</h2>
+    <h2>Test: peer-to-peer ledger sync (Hospital A &harr; Hospital B)</h2>
     <p class="panel-hint">Asks each hospital's peer directly &mdash; not through the shared <code>cli</code> helper &mdash; for its own view of the channel. If both report the same block height, Fabric's gossip/replication protocol has actually converged both peers on the same ledger, not just "both containers are running".</p>
     <label for="peer-channel">Channel</label>
     <input id="peer-channel" value="mychannel">
     <button onclick="runPeerCompare()">Compare peers</button>
-    <div id="peer-compare-result" style="margin-top:14px;"></div>
+    <div id="peer-compare-result" class="result-box"></div>
   </div>
 
   <div class="panel" data-tab="manage">
@@ -372,8 +393,8 @@
     <p class="panel-hint">Publishes to the plain <code>mqtt</code> broker as a connectivity smoke test (does not go through the quantum encryption layer &mdash; that needs org keys present, see Key management above).</p>
     <label for="mqtt-org">Organization</label>
     <select id="mqtt-org">
-      <option value="Hospital_A">Hospital_A</option>
-      <option value="Hospital_B">Hospital_B</option>
+      <option value="Hospital_A">Hospital A</option>
+      <option value="Hospital_B">Hospital B</option>
     </select>
     <label for="mqtt-topic">Topic</label>
     <input id="mqtt-topic" value="quantum/test">
@@ -383,11 +404,22 @@
   </div>
 
   <div class="panel" data-tab="manage">
-    <h2>Test: Fabric chaincode query</h2>
+    <h2>Fabric chaincode</h2>
+    <p class="panel-hint">Package, install (on both peers), approve (by both orgs), and commit a chaincode on the channel above &mdash; nothing below this is queryable until this has run at least once per channel. Safe to re-run for the same version/sequence.</p>
     <label for="bc-channel">Channel</label>
     <input id="bc-channel" value="mychannel">
     <label for="bc-chaincode">Chaincode</label>
     <input id="bc-chaincode" value="quantum_records">
+    <label for="cc-version">Version</label>
+    <input id="cc-version" value="1.0">
+    <label for="cc-sequence">Sequence</label>
+    <input id="cc-sequence" value="1" type="number" min="1">
+    <button onclick="deployChaincode()">Package / install / approve / commit</button>
+    <div id="chaincode-deploy-result" class="result-box"></div>
+  </div>
+
+  <div class="panel" data-tab="manage">
+    <h2>Test: Fabric chaincode query</h2>
     <label for="bc-function">Function</label>
     <input id="bc-function" value="queryAllRecords">
     <button onclick="runBlockchainTest()">Run query</button>
@@ -397,8 +429,8 @@
     <h2>Test: Hedera bridge health</h2>
     <label for="hedera-org">Organization</label>
     <select id="hedera-org">
-      <option value="Hospital_A">Hospital_A</option>
-      <option value="Hospital_B">Hospital_B</option>
+      <option value="Hospital_A">Hospital A</option>
+      <option value="Hospital_B">Hospital B</option>
     </select>
     <button onclick="runHederaTest()">Check health</button>
   </div>
@@ -406,6 +438,115 @@
   <div class="panel full-width" data-tab="all">
     <h2>Results</h2>
     <div id="log"></div>
+  </div>
+
+  <div class="panel full-width" data-tab="api" style="min-height:0;padding:0;overflow:hidden;">
+    <iframe id="api-docs-frame" title="API Explorer" style="width:100%;height:78vh;min-height:520px;border:0;display:block;background:#0b0d11;"></iframe>
+  </div>
+
+  <div class="panel full-width" data-tab="agents">
+    <h2>Ops Agent <span id="ops-agent-badge" class="badge warn" style="float:right;text-transform:none;letter-spacing:0;">checking&hellip;</span></h2>
+    <p class="panel-hint" style="margin-top:0;">
+      agents/ops_agent &middot; real, deployed &mdash; a standalone script that calls the Anthropic API directly (not through this dashboard or Cowork) to watch this docker-compose stack via <code>/api/ops/*</code> and decide whether to notify a human or bring a stuck service back up.
+      <br>Policy: never acts on the first sighting of a problem, only notifies. Only ever autofixes a service stuck in "Created" (a <code>docker compose up</code> that never finished) after seeing it persist across a run. Never auto-restarts a crashing/exited container, and has no tool that can stop or remove anything.
+    </p>
+
+    <div class="agent-stat-grid">
+      <div class="agent-stat-tile"><div class="agent-stat-value" id="ops-agent-tracked">&mdash;</div><div class="agent-stat-label">tracked issues</div></div>
+      <div class="agent-stat-tile"><div class="agent-stat-value" id="ops-agent-autofixed">&mdash;</div><div class="agent-stat-label">autofixed</div></div>
+      <div class="agent-stat-tile" style="grid-column: span 2;"><div class="agent-stat-value" id="ops-agent-lastrun" style="font-size:14px;">&mdash;</div><div class="agent-stat-label">state file last updated</div></div>
+    </div>
+
+    <div id="ops-agent-issues" class="service-list"></div>
+
+    <button onclick="runOpsAgentCheck()" id="ops-agent-run-btn">Run check now</button>
+    <button class="secondary" onclick="refreshOpsAgentState()">Refresh</button>
+    <p class="panel-hint">"Run check now" makes a real call to the Anthropic API &mdash; same as running <code>python3 -m agents.ops_agent.agent --check</code> from a terminal &mdash; so it can take up to ~30s and isn't free. This hourly check also runs on its own via a scheduled task outside this page.</p>
+    <div id="ops-agent-result" class="result-box"></div>
+
+    <div class="section-heading" style="margin-top:18px;">Guidance for the agent</div>
+    <p class="panel-hint" style="margin-top:0;">Notes left here get folded into the agent's context on its next run &mdash; e.g. "hedera-bridge exiting 0 is expected, don't flag it" as a standing (sticky) note, or "keep an eye on asterisk after today's fix" as a one-time nudge. One-time notes are consumed after a single run; sticky notes stay until removed.</p>
+    <div id="ops-agent-guidance-list" class="service-list" style="margin-bottom:10px;"></div>
+    <textarea id="ops-agent-guidance-input" placeholder="e.g. hedera-bridge exiting 0 right after start is expected - it's a one-shot diagnostic script, not a crash." style="min-height:52px;"></textarea>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);margin:6px 0;">
+      <input type="checkbox" id="ops-agent-guidance-sticky" style="width:auto;">
+      Sticky (applies to every future run until removed, not just the next one)
+    </label>
+    <button onclick="addOpsAgentGuidance()">Leave note for agent</button>
+  </div>
+
+  <div class="panel full-width" data-tab="agents">
+    <h2>Call Summarizer <span class="badge ok" style="float:right;text-transform:none;letter-spacing:0;">local-only</span></h2>
+    <p class="panel-hint" style="margin-top:0;">faster-whisper + Ollama &middot; agents/call_summarizer &middot; <span style="color:var(--unknown);">preview &mdash; agent not deployed yet, figures below are examples</span></p>
+
+    <div class="agent-stat-grid">
+      <div class="agent-stat-tile"><div class="agent-stat-value">12</div><div class="agent-stat-label">calls today</div></div>
+      <div class="agent-stat-tile"><div class="agent-stat-value">4.2s</div><div class="agent-stat-label">avg. transcribe</div></div>
+      <div class="agent-stat-tile"><div class="agent-stat-value">1.8s</div><div class="agent-stat-label">avg. summarize</div></div>
+      <div class="agent-stat-tile"><div class="agent-stat-value">12/12</div><div class="agent-stat-label">ledger writes ok</div></div>
+    </div>
+
+    <p class="panel-hint">Recent activity &mdash; the ledger stores a hash and signature only; no transcript or summary text ever leaves local storage.</p>
+    <table class="kv-table">
+      <tr><td class="k">14:52 &middot; Hospital_A</td><td class="v">sip &middot; a41f&hellip;09c2</td></tr>
+      <tr><td class="k">14:31 &middot; Hospital_B</td><td class="v">sip &middot; 7be0&hellip;44a1</td></tr>
+      <tr><td class="k">13:58 &middot; Hospital_A</td><td class="v">sip &middot; 2d9c&hellip;f130</td></tr>
+      <tr><td class="k">13:20 &middot; Hospital_B</td><td class="v">sip &middot; e651&hellip;8b0d</td></tr>
+    </table>
+  </div>
+
+  <div class="panel full-width" data-tab="agents">
+    <h2>Correlator Agent <span class="badge ok" style="float:right;text-transform:none;letter-spacing:0;">AMI connected</span></h2>
+    <p class="panel-hint" style="margin-top:0;">Call-ID &hArr; device_id &middot; agents/network_correlator &middot; <span style="color:var(--unknown);">preview &mdash; agent not deployed yet, example trace below</span></p>
+
+    <div class="agent-stat-grid">
+      <div class="agent-stat-tile"><div class="agent-stat-value">3</div><div class="agent-stat-label">open correlations</div></div>
+      <div class="agent-stat-tile"><div class="agent-stat-value">47</div><div class="agent-stat-label">joined today</div></div>
+      <div class="agent-stat-tile"><div class="agent-stat-value">2</div><div class="agent-stat-label">unmatched SIP</div></div>
+      <div class="agent-stat-tile"><div class="agent-stat-value">94%</div><div class="agent-stat-label">join rate</div></div>
+    </div>
+
+    <p class="panel-hint">Example trace &mdash; one correlated call, today 14:52.</p>
+    <svg viewBox="0 0 640 210" role="img" style="width:100%;height:auto;" aria-label="One example call traced across four lanes: a SIP INVITE at zero seconds, an SRTP session starting at 0.4 seconds, an MQTT device ping at 1.1 seconds, and a Fabric ledger write six seconds later after the SIP call ends at 5.6 seconds.">
+      <text x="0" y="35" class="agent-lane-label">SIP</text>
+      <line x1="70" y1="40" x2="610" y2="40" stroke="var(--panel-border)" stroke-width="1"></line>
+      <text x="0" y="85" class="agent-lane-label">SRTP</text>
+      <line x1="70" y1="90" x2="610" y2="90" stroke="var(--panel-border)" stroke-width="1"></line>
+      <text x="0" y="135" class="agent-lane-label">MQTT</text>
+      <line x1="70" y1="140" x2="610" y2="140" stroke="var(--panel-border)" stroke-width="1"></line>
+      <text x="0" y="185" class="agent-lane-label">Ledger</text>
+      <line x1="70" y1="190" x2="610" y2="190" stroke="var(--panel-border)" stroke-width="1"></line>
+
+      <line x1="70" y1="40" x2="558" y2="40" stroke="var(--agent-correlator)" stroke-width="2.5" stroke-linecap="round" opacity="0.35"></line>
+      <polyline points="70,40 105,90 166,140 575,190" fill="none" stroke="var(--agent-correlator)" stroke-width="1.5" stroke-dasharray="1 4" stroke-linecap="round"></polyline>
+
+      <circle cx="70" cy="40" r="4.5" fill="var(--agent-correlator)"><title>SIP INVITE, Call-ID c-441, t=0.0s</title></circle>
+      <text x="78" y="30" class="agent-mark-label">INVITE</text>
+
+      <circle cx="558" cy="40" r="4.5" fill="var(--panel)" stroke="var(--agent-correlator)" stroke-width="2"><title>SIP BYE, t=5.6s</title></circle>
+      <text x="530" y="30" class="agent-mark-label">BYE</text>
+
+      <circle cx="105" cy="90" r="4.5" fill="var(--agent-correlator)"><title>SRTP session opens, inherits Call-ID c-441, t=0.4s</title></circle>
+      <text x="113" y="80" class="agent-mark-label">media opens</text>
+
+      <circle cx="166" cy="140" r="4.5" fill="var(--agent-correlator)"><title>MQTT device_id d-441 attestation, t=1.1s</title></circle>
+      <text x="174" y="130" class="agent-mark-label">device_id d-441</text>
+
+      <circle cx="575" cy="190" r="4.5" fill="var(--up)"><title>RecordCommunication written, t=5.8s</title></circle>
+      <text x="490" y="180" class="agent-mark-label">hash + sig written</text>
+
+      <line x1="70" y1="205" x2="610" y2="205" stroke="var(--panel-border)" stroke-width="1"></line>
+      <text x="70" y="218" class="agent-tick-label">0s</text>
+      <text x="243" y="218" class="agent-tick-label">2s</text>
+      <text x="416" y="218" class="agent-tick-label">4s</text>
+      <text x="588" y="218" class="agent-tick-label">6s</text>
+    </svg>
+    <p class="panel-hint">Four independent signals, one device_id &mdash; the join is what turns them into a single record instead of three unrelated log lines.</p>
+  </div>
+
+  <div class="panel full-width" data-tab="agents">
+    <h2>What's behind this preview</h2>
+    <p class="panel-hint" style="margin-top:0;">Ops Agent above is real and live &mdash; it's agents/ops_agent, wired to this dashboard's own /api/ops/* endpoints. Call Summarizer and Correlator Agent below are still previews: real today is the ledger write path (RecordCommunication) and Asterisk's AMI the correlator's SIP lane would watch; not real yet are the two agents themselves and a small /api/agents/* endpoint pair for this tab to poll instead of the fixed example numbers above.</p>
   </div>
 
 </div>
@@ -766,7 +907,139 @@ function showTab(tab) {
   document.querySelectorAll(".tab-btn").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.tabBtn === tab);
   });
+  if (tab === "api") {
+    const frame = document.getElementById("api-docs-frame");
+    if (frame && !frame.src) frame.src = "/docs";
+  }
+  if (tab === "agents") {
+    refreshOpsAgentState();
+    refreshOpsAgentGuidance();
+  }
   try { sessionStorage.setItem("pqc-dashboard-tab", tab); } catch (e) { /* private mode, etc - fine to skip */ }
+}
+
+function fmtAgentTimestamp(epochSeconds) {
+  if (!epochSeconds) return 'never run';
+  return new Date(epochSeconds * 1000).toLocaleString();
+}
+
+async function refreshOpsAgentState() {
+  const badge = document.getElementById('ops-agent-badge');
+  const issuesEl = document.getElementById('ops-agent-issues');
+  const { ok, body } = await api('/ops/agent/state');
+
+  if (!ok || !body.ok) {
+    badge.className = 'badge bad';
+    badge.textContent = 'unavailable';
+    document.getElementById('ops-agent-tracked').textContent = '?';
+    document.getElementById('ops-agent-autofixed').textContent = '?';
+    document.getElementById('ops-agent-lastrun').textContent = '?';
+    issuesEl.innerHTML = `<div class="service-row"><span class="service-name">${(body && body.detail) || 'Could not read agent state.'}</span></div>`;
+    return;
+  }
+
+  const state = body.state || {};
+  const names = Object.keys(state);
+  document.getElementById('ops-agent-tracked').textContent = names.length;
+  document.getElementById('ops-agent-autofixed').textContent = names.filter(n => state[n] && state[n].autofixed).length;
+  document.getElementById('ops-agent-lastrun').textContent = fmtAgentTimestamp(body.last_run);
+
+  if (names.length === 0) {
+    badge.className = 'badge ok';
+    badge.textContent = 'nothing flagged';
+    issuesEl.innerHTML = `<div class="service-row"><span class="service-name"><span class="dot up"></span>Nothing flagged as of the agent's last check.</span></div>`;
+    return;
+  }
+
+  badge.className = 'badge warn';
+  badge.textContent = `${names.length} flagged`;
+  issuesEl.innerHTML = names.map(name => {
+    const s = state[name] || {};
+    const tag = s.autofixed ? 'autofix attempted' : 'flagged, not yet acted on';
+    return `
+      <div class="service-row">
+        <div class="service-row-top">
+          <span class="service-name"><span class="dot ${s.autofixed ? 'unknown' : 'down'}"></span>${name}</span>
+          <span class="badge ${s.autofixed ? 'warn' : 'bad'}">${tag}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function runOpsAgentCheck() {
+  const btn = document.getElementById('ops-agent-run-btn');
+  const resultEl = document.getElementById('ops-agent-result');
+  btn.disabled = true;
+  btn.textContent = 'Running\u2026';
+  resultEl.innerHTML = `<div class="sync-banner" style="display:block;white-space:pre-wrap;line-height:1.5;">Calling the Anthropic API and checking the stack &mdash; this can take up to ~30s&hellip;</div>`;
+
+  try {
+    const { ok, body } = await api('/ops/agent/run', { method: 'POST' });
+    const success = ok && body.ok !== false;
+    const text = (body.stdout && body.stdout.trim())
+      ? body.stdout.replace(/</g, '&lt;')
+      : (success ? 'Nothing to report \u2014 everything checked out healthy, so the agent stayed silent (that is the expected output for the common case).' : ((body.detail || body.stderr || 'ops_agent run failed.').toString().replace(/</g, '&lt;')));
+    resultEl.innerHTML = `<div class="sync-banner ${success ? 'ok' : 'bad'}" style="display:block;white-space:pre-wrap;line-height:1.5;">${text}</div>`;
+    log('ops_agent --check', body, success);
+  } catch (e) {
+    resultEl.innerHTML = `<div class="sync-banner bad" style="display:block;white-space:pre-wrap;line-height:1.5;">Request failed: ${String(e).replace(/</g, '&lt;')}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Run check now';
+    refreshOpsAgentState();
+  }
+}
+
+function fmtGuidanceTimestamp(epochSeconds) {
+  if (!epochSeconds) return '';
+  return new Date(epochSeconds * 1000).toLocaleString();
+}
+
+async function refreshOpsAgentGuidance() {
+  const el = document.getElementById('ops-agent-guidance-list');
+  const { ok, body } = await api('/ops/agent/guidance');
+  if (!ok || !body.ok) {
+    el.innerHTML = `<div class="service-row"><span class="service-name">${(body && body.detail) || 'Could not load guidance.'}</span></div>`;
+    return;
+  }
+  const entries = body.entries || [];
+  if (entries.length === 0) {
+    el.innerHTML = `<div class="service-row"><span class="service-name" style="color:var(--muted);">No notes waiting &mdash; the agent runs on its standing policy alone.</span></div>`;
+    return;
+  }
+  el.innerHTML = entries.map(e => `
+    <div class="service-row">
+      <div class="service-row-top">
+        <span class="service-name">
+          <span class="badge ${e.sticky ? 'warn' : 'ok'}" style="margin-right:6px;">${e.sticky ? 'sticky' : 'one-time'}</span>
+          ${(e.message || '').replace(/</g, '&lt;')}
+        </span>
+        <button class="secondary" style="padding:2px 8px;font-size:11px;" onclick="removeOpsAgentGuidance('${e.id}')">Remove</button>
+      </div>
+      <div style="font-size:10.5px;color:var(--muted);margin-top:2px;">added ${fmtGuidanceTimestamp(e.added_at)}${e.added_by ? ' &middot; ' + e.added_by : ''}</div>
+    </div>
+  `).join('');
+}
+
+async function addOpsAgentGuidance() {
+  const input = document.getElementById('ops-agent-guidance-input');
+  const sticky = document.getElementById('ops-agent-guidance-sticky').checked;
+  const message = input.value.trim();
+  if (!message) return;
+  const { ok, body } = await api(`/ops/agent/guidance?message=${encodeURIComponent(message)}&sticky=${sticky}&added_by=dashboard`, { method: 'POST' });
+  if (ok && body.ok) {
+    input.value = '';
+    document.getElementById('ops-agent-guidance-sticky').checked = false;
+  }
+  log('Add ops_agent guidance', body, ok && body.ok);
+  refreshOpsAgentGuidance();
+}
+
+async function removeOpsAgentGuidance(id) {
+  const { ok, body } = await api(`/ops/agent/guidance/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  log('Remove ops_agent guidance', body, ok && body.ok);
+  refreshOpsAgentGuidance();
 }
 
 function syncChannelName(value) {
@@ -823,7 +1096,7 @@ async function checkChannelStatus() {
     const bOk = body.Hospital_B && body.Hospital_B.ok;
     const banner = aOk && bOk
       ? `<div class="sync-banner ok">Both peers report channel "${channel}" exists.</div>`
-      : `<div class="sync-banner bad">Hospital_A: ${aOk ? 'has channel' : 'does not have channel'} &middot; Hospital_B: ${bOk ? 'has channel' : 'does not have channel'}</div>`;
+      : `<div class="sync-banner bad">Hospital A: ${aOk ? 'has channel' : 'does not have channel'} &middot; Hospital B: ${bOk ? 'has channel' : 'does not have channel'}</div>`;
     el.innerHTML = banner;
   }
 }
@@ -853,6 +1126,25 @@ async function runMqttTest() {
     body: JSON.stringify({ org_id, topic, message }),
   });
   log('MQTT publish test', body, ok && body.published);
+}
+
+async function deployChaincode() {
+  const channel = document.getElementById('bc-channel').value;
+  const chaincode = document.getElementById('bc-chaincode').value;
+  const version = document.getElementById('cc-version').value;
+  const sequence = parseInt(document.getElementById('cc-sequence').value, 10) || 1;
+  const el = document.getElementById('chaincode-deploy-result');
+  if (el) el.innerHTML = `<div class="sync-banner">Packaging, installing, approving, and committing "${chaincode}" v${version} on "${channel}"&hellip; this can take up to a minute.</div>`;
+  const { ok, body } = await api('/fabric/chaincode/deploy', {
+    method: 'POST',
+    body: JSON.stringify({ channel, chaincode, version, sequence }),
+  });
+  log('Deploy chaincode', body, ok && body.ok);
+  if (el) {
+    el.innerHTML = (ok && body.ok)
+      ? `<div class="sync-banner ok">Chaincode "${chaincode}" v${version} committed on "${channel}".</div>`
+      : `<div class="sync-banner bad">${(body && body.detail) || 'Chaincode deploy did not complete - see steps below.'}</div>`;
+  }
 }
 
 async function runBlockchainTest() {
