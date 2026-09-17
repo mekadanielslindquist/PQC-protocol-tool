@@ -52,7 +52,45 @@ peer discovery) are now solved - but "two hospitals actually exchanging
 quantum-secured, ledger-verified communications, on genuinely separate
 infrastructure" hasn't been demonstrated end-to-end yet.
 
+## Built With Claude - A Deployment Reference, Not Just a Demo
+
+This project is two things at once: a working PQC healthcare-blockchain prototype (above), and a real,
+warts-and-all record of building and operating a Hyperledger Fabric + docker-compose stack collaboratively with
+Claude - end to end, including the parts that usually don't make it into a writeup: hours spent chasing a Docker
+Desktop daemon that intermittently stopped responding, a `docker` binary that couldn't be found from a Python
+subprocess despite working fine in a terminal, PQC libraries compiled on the wrong OS silently failing to load,
+and a crypto-config generation script that had been writing to the wrong directory for who knows how long. None
+of that got edited out - the git history and `README.md`'s own "Troubleshooting Known Issues" section below are
+the real sequence of bugs found and fixed, not a cleaned-up retelling.
+
+What that produced, beyond the application itself:
+
+- **`management_api/config.py`'s `docker_binary()`** and the timeout-guarded endpoints in
+  `management_api/routers/ops.py` - a pattern for driving `docker compose` reliably from a long-running Python
+  process on macOS, where PATH resolution and an occasionally-wedged Docker Desktop daemon are the real
+  obstacles, not your application logic.
+- **`agents/ops_agent/agent.py`** - a standalone agent (calls the Anthropic API directly, not through any Claude
+  client) that watches the compose stack, with a deliberately narrow tool boundary - it can read status/logs and
+  run one scoped, non-destructive recovery action, and nothing else - plus a persisted "notify once, don't nag,
+  don't blindly autofix a crash loop" policy, and a guidance channel (`.guidance.json`) letting a human steer its
+  behavior over time without touching its code.
+- **A dashboard panel** (`management_ui/index.html`'s Agents tab) surfacing that agent's real state and letting
+  anyone add guidance notes, not just view a status light.
+- **`skills/hyperledger-fabric-ops-agent/`** - the debugging playbook and the ops-agent architecture, written up
+  generally rather than tied to this project's specific healthcare/PQC domain, so a future Claude session
+  deploying a similar stack (here or elsewhere) doesn't have to rediscover any of it from scratch. See that
+  skill's `SKILL.md` for the full writeup, or `skills/hyperledger-fabric-ops-agent/references/` for the detailed
+  fixes.
+
+The premise being tested: an AI-assisted build where the AI also does the live debugging on the actual target
+environment - not just generating code once - is a stronger proof of concept than either a hand-built demo or a
+one-shot AI-generated one, because most of what made this hard (environment quirks, not application logic) only
+shows up once you actually try to run the thing. Whether that premise holds up outside this one project is an
+open question, not a settled claim - this repo is the evidence either way.
+
 ## Architecture Overview
+
+
 
 The system connects healthcare organizations (Hospital A and Hospital B) via multiple secure communication channels:
 
