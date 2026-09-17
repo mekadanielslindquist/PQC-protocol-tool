@@ -81,7 +81,6 @@ RUN ./configure \
     --with-speexdsp \
     --disable-static \
     --enable-shared \
-    --host=aarch64-linux-gnu \
     --verbose || (cat config.log && exit 1)
 
 # Generate menuselect-tree file first
@@ -164,10 +163,23 @@ COPY --from=builder /var/spool/asterisk /var/spool/asterisk
 COPY --from=builder /tmp/asterisk-libs /usr/lib/
 COPY --from=builder /usr/src/asterisk_modules/res_quantum/res_quantum.so /usr/lib/asterisk/modules/
 
-# Create SSL library symlinks if needed
+# Create SSL library symlink if needed. libssl1.1 on Debian lives under the
+# multiarch triplet directory (e.g. /usr/lib/aarch64-linux-gnu/libssl.so.1.1),
+# not bare /usr/lib - a previous version of this check looked only at
+# /usr/lib/libssl.so.1.1 and so never actually fired (confirmed via a
+# find-in-image debug run). Locate the real file with `find` instead of
+# hardcoding a path, so this keeps working across architectures, and create
+# the symlink alongside it so it lands in the same directory the dynamic
+# linker already searches.
 RUN mkdir -p /usr/lib && \
-    if [ ! -f /usr/lib/libasteriskssl.so.1 ] && [ -f /usr/lib/libssl.so.1.1 ]; then \
-        ln -sf /usr/lib/libssl.so.1.1 /usr/lib/libasteriskssl.so.1; \
+    if ! ldconfig -p | grep -q 'libasteriskssl\.so\.1 '; then \
+        SSL_LIB="$(find /usr/lib /lib -iname 'libssl.so.1.1' 2>/dev/null | head -n1)"; \
+        if [ -n "$SSL_LIB" ]; then \
+            ln -sf "$SSL_LIB" "$(dirname "$SSL_LIB")/libasteriskssl.so.1"; \
+            echo "Linked libasteriskssl.so.1 -> $SSL_LIB"; \
+        else \
+            echo "WARNING: libssl.so.1.1 not found - libasteriskssl.so.1 symlink not created" >&2; \
+        fi; \
     fi && \
     ldconfig
 

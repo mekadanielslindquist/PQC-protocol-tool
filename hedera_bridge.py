@@ -38,11 +38,19 @@ class HederaFabricBridge:
         self.org_id = org_id
 
         # Use HTTPS by default for security
-        self.wallet_service_url = os.environ.get('WALLET_SERVICE_URL', 'https://wallet-service:3000')
+        self.wallet_service_url = os.environ.get('WALLET_SERVICE_URL', 'http://wallet-service:3000')
         self.fabric_gateway_url = os.environ.get('FABRIC_GATEWAY_URL', f'https://peer0.{org_id}.example.com:7051')
 
         # Initialize the secure key manager
-        self.secure_key_manager = SecureKeyManager(org_id)
+        # SecureKeyManager (sip_connect/hipaa_security.py) is a pure
+        # static-method utility class - every method on it takes org_id/
+        # keys explicitly as arguments and none touch `self`, so it was
+        # never meant to be instantiated (it has no __init__ that accepts
+        # org_id, hence the old `SecureKeyManager(org_id)` call raising
+        # "takes no arguments"). Hold the class itself; the static-method
+        # calls below (self.secure_key_manager.sign_message(...)) work the
+        # same way whether called via an instance or the class.
+        self.secure_key_manager = SecureKeyManager
 
         # Load quantum keys
         self.quantum_keys = self._load_quantum_keys()
@@ -632,8 +640,16 @@ if __name__ == "__main__":
 
     if health['status'] != 'healthy':
         print("Warning: System is not fully healthy. Check logs for details.")
-        if input("Continue with sample transaction? (y/n): ").lower() != 'y':
-            sys.exit(1)
+        if sys.stdin.isatty():
+            if input("Continue with sample transaction? (y/n): ").lower() != 'y':
+                sys.exit(1)
+        else:
+            # No terminal attached (e.g. running as a docker-compose service) -
+            # input() would immediately raise EOFError and crash the container
+            # with exit 1 on every run. Skip the interactive sample-transaction
+            # demo instead of blocking on stdin that will never arrive.
+            print("No interactive terminal attached - skipping sample transaction.")
+            sys.exit(0)
 
     # Example data
     sample_data = {

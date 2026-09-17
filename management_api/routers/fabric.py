@@ -26,7 +26,7 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from management_api.config import PROJECT_ROOT
+from management_api.config import PROJECT_ROOT, docker_binary
 
 router = APIRouter(prefix="/fabric", tags=["fabric"])
 
@@ -64,7 +64,7 @@ CHANNEL_NAME_RE = re.compile(r"^[a-z][a-z0-9.-]{0,248}$")
 def _docker_exec(*args: str) -> dict:
     try:
         result = subprocess.run(
-            ["docker", "exec", *args],
+            [docker_binary(), "exec", *args],
             cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,
@@ -99,6 +99,21 @@ def _sync_configtx() -> None:
 def _already_exists(result: dict) -> bool:
     text = (result.get("stdout", "") + result.get("stderr", "")).lower()
     return "already exists" in text or "already joined" in text
+
+
+def _osnadmin_ok(result: dict) -> bool:
+    """osnadmin prints "Status: <code>\n{...}" from the admin HTTP API but
+    - unlike most Fabric CLI subcommands - exits 0 even when that status is
+    a 4xx/5xx error, so `_docker_exec`'s returncode-based "ok" isn't
+    trustworthy for it on its own. Fall back to returncode when there's no
+    "Status: " line to check (e.g. a different failure mode entirely).
+    """
+    if not result.get("ok"):
+        return False
+    match = re.search(r"Status:\s*(\d+)", result.get("stdout", ""))
+    if match:
+        return match.group(1).startswith("2")
+    return True
 
 
 class ChannelCreateRequest(BaseModel):
@@ -160,11 +175,15 @@ def create_channel(request: ChannelCreateRequest):
         "--client-cert", ORDERER_ADMIN_CLIENT_CERT,
         "--client-key", ORDERER_ADMIN_CLIENT_KEY,
     )
-    if not r.get("ok") and not _already_exists(r):
+    orderer_joined = _osnadmin_ok(r) or _already_exists(r)
+    if not orderer_joined:
         return {
             "ok": False, "channel": channel, "steps": steps,
             "detail": "osnadmin could not join the channel to the orderer - see the "
-                      "step above. Is the orderer container up and healthy?",
+                      "step above (check for an x509 certificate error specifically: "
+                      "that means the orderer's live TLS cert and the CA the channel "
+                      "config trusts don't actually match, which no amount of "
+                      "retrying will fix - crypto-config needs regenerating).",
         }
 
     r = run("join Hospital_A peer to channel", "cli", "peer", "channel", "join", "-b", genesis_block)
@@ -203,7 +222,159 @@ def create_channel(request: ChannelCreateRequest):
             "--tls", "--cafile", ORDERER_TLS_CA,
         )
 
-    return {"ok": hosp_a_joined and hosp_b_joined, "channel": channel, "steps": steps}
+    return {"ok": orderer_joined and hosp_a_joined and hosp_b_joined, "channel": channel, "steps": steps}
+
+
+HOSPITAL_A_PEER_TLS_CA = f"{CLI_PEER_ROOT}/crypto/peerOrganizations/Hospital_A.example.com/peers/peer0.Hospital_A.example.com/tls/ca.crt"
+HOSPITAL_B_PEER_TLS_CA = f"{CLI_PEER_ROOT}/crypto/peerOrganizations/Hospital_B.example.com/peers/peer0.Hospital_B.example.com/tls/ca.crt"
+CHAINCODE_PATH_ROOT = f"{CLI_PEER_ROOT}/chaincode"
+
+
+def _package_id_from_output(text: str) -> str | None:
+    # `calculatepackageid` prints just the bare "<label>:<hash>" id; some
+    # other lifecycle subcommands print it as "...identifier: <id>" instead.
+    match = re.search(r"identifier:\s*(\S+)", text)
+    if match:
+        return match.group(1)
+    text = text.strip()
+    return text or None
+
+
+class ChaincodeDeployRequest(BaseModel):
+    channel: str = "mychannel"
+    chaincode: str = "quantum_records"
+    version: str = "1.0"
+    sequence: int = 1
+    path: str | None = None  # defaults to chaincode/<chaincode> inside the cli container
+
+
+@router.post("/chaincode/deploy")
+def deploy_chaincode(request: ChaincodeDeployRequest):
+    """Package, install (on both orgs' peers), approve (by both orgs), and
+    commit `request.chaincode` on `request.channel`.
+
+    This is the missing half of "channel/create": that endpoint only
+    brings the channel itself up (genesis block, orderer join, peer
+    joins, anchor peers) - it was never responsible for putting any
+    chaincode on the channel, and nothing else in this API ever called
+    the chaincode lifecycle commands either. fabric_commands.sh's
+    install_chaincode() had the manual steps but was never wired into the
+    dashboard, so until this endpoint runs at least once for a given
+    channel, `POST /test/blockchain/query` (and any real invoke) has
+    nothing installed to query - that's a chaincode-lifecycle gap, not a
+    naming/identifier mismatch (chaincode names are validated by a
+    separate, more permissive regex than MSP IDs - underscores are
+    explicitly allowed in chaincode names, per Fabric's own
+    core/chaincode/lifecycle validation).
+
+    Best-effort and sequential, same shape as channel/create: every
+    step's result is returned in order. Re-running is mostly safe - the
+    install steps tolerate "already successfully installed", and
+    approve/commit tolerate messages indicating that sequence is already
+    defined - but note a real *change* to already-committed chaincode
+    (new code, different endorsement policy) needs the sequence number
+    bumped, which the dashboard doesn't currently expose beyond the
+    request body's `sequence` field.
+    """
+    channel = request.channel.strip()
+    chaincode = request.chaincode.strip()
+    version = request.version.strip()
+    sequence = str(request.sequence)
+    label = f"{chaincode}_{version}"
+    package_path = request.path or f"{CHAINCODE_PATH_ROOT}/{chaincode}"
+    package_file = f"{chaincode}.tar.gz"
+
+    steps: list[dict[str, Any]] = []
+
+    def run(name: str, *args: str) -> dict:
+        result = _docker_exec(*args)
+        steps.append({"name": name, **result})
+        return result
+
+    def already_installed(result: dict) -> bool:
+        text = (result.get("stdout", "") + result.get("stderr", "")).lower()
+        return "already successfully installed" in text
+
+    r = run(
+        "package chaincode",
+        "cli", "peer", "lifecycle", "chaincode", "package", package_file,
+        "--path", package_path, "--lang", "golang", "--label", label,
+    )
+    if not r.get("ok"):
+        return {
+            "ok": False, "channel": channel, "chaincode": chaincode, "steps": steps,
+            "detail": "peer lifecycle chaincode package failed - see the step above. "
+                      "Common cause: the chaincode's Go module dependencies aren't "
+                      "reachable/vendored for a build inside the cli container.",
+        }
+
+    r = run("install on Hospital_A peer", "cli", "peer", "lifecycle", "chaincode", "install", package_file)
+    hosp_a_installed = r.get("ok") or already_installed(r)
+
+    r = run(
+        "install on Hospital_B peer",
+        *HOSPITAL_B_ENV, "cli", "peer", "lifecycle", "chaincode", "install", package_file,
+    )
+    hosp_b_installed = r.get("ok") or already_installed(r)
+
+    if not (hosp_a_installed and hosp_b_installed):
+        return {
+            "ok": False, "channel": channel, "chaincode": chaincode, "steps": steps,
+            "detail": "Chaincode install failed on at least one peer - see the steps above.",
+        }
+
+    r = run("calculate package ID", "cli", "peer", "lifecycle", "chaincode", "calculatepackageid", package_file)
+    package_id = _package_id_from_output(r.get("stdout", "")) if r.get("ok") else None
+    if not package_id:
+        return {
+            "ok": False, "channel": channel, "chaincode": chaincode, "steps": steps,
+            "detail": "Could not determine the package ID from calculatepackageid - see the step above.",
+        }
+
+    r = run(
+        "approve for Hospital_A",
+        "cli", "peer", "lifecycle", "chaincode", "approveformyorg",
+        "-o", "orderer.example.com:7050",
+        "--channelID", channel, "--name", chaincode, "--version", version,
+        "--package-id", package_id, "--sequence", sequence,
+        "--tls", "--cafile", ORDERER_TLS_CA,
+    )
+    hosp_a_approved = r.get("ok") or _already_exists(r)
+
+    r = run(
+        "approve for Hospital_B",
+        *HOSPITAL_B_ENV,
+        "cli", "peer", "lifecycle", "chaincode", "approveformyorg",
+        "-o", "orderer.example.com:7050",
+        "--channelID", channel, "--name", chaincode, "--version", version,
+        "--package-id", package_id, "--sequence", sequence,
+        "--tls", "--cafile", ORDERER_TLS_CA,
+    )
+    hosp_b_approved = r.get("ok") or _already_exists(r)
+
+    r = run(
+        "commit chaincode definition",
+        "cli", "peer", "lifecycle", "chaincode", "commit",
+        "-o", "orderer.example.com:7050",
+        "--channelID", channel, "--name", chaincode, "--version", version, "--sequence", sequence,
+        "--tls", "--cafile", ORDERER_TLS_CA,
+        "--peerAddresses", "peer0.Hospital_A.example.com:7051",
+        "--tlsRootCertFiles", HOSPITAL_A_PEER_TLS_CA,
+        "--peerAddresses", "peer0.Hospital_B.example.com:7061",
+        "--tlsRootCertFiles", HOSPITAL_B_PEER_TLS_CA,
+    )
+    committed = r.get("ok") or _already_exists(r)
+
+    ok = hosp_a_approved and hosp_b_approved and committed
+    return {
+        "ok": ok,
+        "channel": channel,
+        "chaincode": chaincode,
+        "version": version,
+        "sequence": request.sequence,
+        "package_id": package_id,
+        "steps": steps,
+    }
 
 
 @router.get("/channel/{channel}/status")

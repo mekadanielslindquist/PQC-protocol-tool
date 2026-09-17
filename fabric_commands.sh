@@ -47,7 +47,7 @@ start_network() {
     fi
 
     # Start with docker-compose
-    docker-compose up -d
+    docker compose up -d
 
     echo "Network started. Waiting for containers to stabilize..."
     sleep 10
@@ -178,7 +178,7 @@ if health['status'] == 'healthy':
 # 7. Stop the network
 stop_network() {
     echo "Stopping the network..."
-    docker-compose down
+    docker compose down
     echo "Network stopped"
 }
 

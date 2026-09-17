@@ -15,7 +15,7 @@ import json
 import socket
 import subprocess
 
-from management_api.config import PROJECT_ROOT, service_topology
+from management_api.config import PROJECT_ROOT, docker_binary, service_topology
 
 DOCKER_TIMEOUT_SECONDS = 8
 TCP_PROBE_TIMEOUT_SECONDS = 1.5
@@ -28,7 +28,7 @@ def docker_compose_container_states() -> dict[str, str] | None:
     """
     try:
         result = subprocess.run(
-            ["docker", "compose", "ps", "--format", "json"],
+            [docker_binary(), "compose", "ps", "--format", "json"],
             cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,

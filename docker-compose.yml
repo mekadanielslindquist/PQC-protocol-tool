@@ -1,10 +1,26 @@
+# Note on `deploy:` outside Swarm: plain `docker compose up` is NOT a no-op
+# for these fields the way "Swarm-only" suggests. `resources.limits` and
+# `mode: replicated` / `replicas:` really are applied locally (that's why
+# quantum_mqtt actually runs as two containers below), and `restart_policy`
+# also appears to be honored locally too - confirmed the hard way tonight
+# when asterisk, with only this block and no top-level `restart:`, was
+# still observed cycling through real "Restarting" states. So these
+# numbers are live resource commitments, not documentation. They were
+# originally 2 CPU/2G per service with matching (or even doubled, for
+# quantum_mqtt's 2 replicas) reservations - summed across every service
+# below that carries its own `deploy:`, that came to roughly 17 CPU/17GB
+# of simultaneous limits alone, which is a very plausible contributor to
+# the repeated Docker Desktop daemon hangs tonight. Trimmed to a total
+# around 9-10 CPU/9-10GB, favoring the actual Fabric consensus/crypto
+# work (orderer, both peers) with a bit more room than the lighter
+# Python glue services.
 x-quantum-service-config: &quantum-service-config
   build: .
   deploy:
     resources:
       limits:
-        cpus: '2'
-        memory: 2G
+        cpus: '1'
+        memory: 1G
     restart_policy:
       condition: on-failure
       delay: 5s
@@ -33,11 +49,11 @@ services:
     deploy:
         resources:
           limits:
-            cpus: '2'
-            memory: 2G
-          reservations:
             cpus: '1'
             memory: 1G
+          reservations:
+            cpus: '0.25'
+            memory: 256M
         restart_policy:
           condition: on-failure
           delay: 10s
@@ -81,11 +97,11 @@ services:
       deploy:
         resources:
           limits:
-            cpus: '2'
-            memory: 2G
-          reservations:
             cpus: '1'
             memory: 1G
+          reservations:
+            cpus: '0.25'
+            memory: 256M
         restart_policy:
           condition: on-failure
           delay: 5s
@@ -150,11 +166,11 @@ services:
       deploy:
         resources:
           limits:
-            cpus: '2'
-            memory: 2G
-          reservations:
             cpus: '1'
             memory: 1G
+          reservations:
+            cpus: '0.25'
+            memory: 256M
         restart_policy:
           condition: on-failure
           delay: 5s
@@ -192,11 +208,11 @@ services:
         replicas: 2
         resources:
           limits:
-            cpus: '2'
-            memory: 2G
+            cpus: '0.5'
+            memory: 512M
           reservations:
-            cpus: '1'
-            memory: 1G
+            cpus: '0.25'
+            memory: 128M
         restart_policy:
           condition: on-failure
           delay: 5s
@@ -260,6 +276,7 @@ services:
   # Updated wallet-service with Hedera integration
   wallet-service:
     build: ./wallet-service
+    restart: unless-stopped
     volumes:
       - ./wallet-keys:/app/keys
       - ./wallet-logs:/app/logs
@@ -296,7 +313,7 @@ services:
     environment:
       - PYTHONPATH=/app:/app/sip_connect
       - ORG_ID=Hospital_A
-      - WALLET_SERVICE_URL=https://wallet-service:3000
+      - WALLET_SERVICE_URL=http://wallet-service:3000
       - FABRIC_GATEWAY_URL=https://peer0.Hospital_A.example.com:7051
     healthcheck:
       test: [ "CMD", "python3", "-c", "import sys; sys.exit(0 if open('/app/logs/hedera_bridge.log').read() else 1)" ]
@@ -329,11 +346,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2'
-          memory: 2G
+          cpus: '1.5'
+          memory: 1.5G
         reservations:
-          cpus: '2'
-          memory: 2G
+          cpus: '0.5'
+          memory: 512M
     environment:
       # Core Configuration
       - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
@@ -384,7 +401,7 @@ services:
       - CORE_PEER_QUANTUM_KEYSTORE=/etc/hyperledger/fabric/quantum_keys
       - CORE_PEER_QUANTUM_KEYTYPES=["Falcon","Kyber"]
     volumes:
-      - /var/run/:/host/var/run/
+      - /var/run/docker.sock:/host/var/run/docker.sock
       - ./keys:/etc/hyperledger/fabric/quantum_keys
       - ./crypto-config/peerOrganizations/Hospital_A.example.com/peers/peer0.Hospital_A.example.com/msp:/etc/hyperledger/fabric/msp
       - ./crypto-config/peerOrganizations/Hospital_A.example.com/peers/peer0.Hospital_A.example.com/tls:/etc/hyperledger/fabric/tls
@@ -396,7 +413,10 @@ services:
       - "7051:7051"
       - "9444:9443"
     depends_on:
-      - couchdb
+      couchdb:
+        condition: service_started
+      cli:
+        condition: service_healthy
     networks:
       - quantum_sip_default
     dns:
@@ -416,7 +436,11 @@ services:
       args:
         ORG_NAME: Hospital_B
     healthcheck:
-      test: [ "CMD", "bash", "-c", "curl -s http://localhost:9443/healthz || exit 0" ]
+      # Hospital_B's own CORE_OPERATIONS_LISTENADDRESS is 0.0.0.0:9444, not
+      # :9443 (that was copy-pasted from Hospital_A) - only the `|| exit 0`
+      # escape hatch below was hiding this, since the test always "passes"
+      # regardless of what curl actually returns.
+      test: [ "CMD", "bash", "-c", "curl -s http://localhost:9444/healthz || exit 0" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -426,11 +450,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2'
-          memory: 2G
+          cpus: '1.5'
+          memory: 1.5G
         reservations:
-          cpus: '2'
-          memory: 2G
+          cpus: '0.5'
+          memory: 512M
     environment:
       # Core Configuration
       - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
@@ -481,7 +505,7 @@ services:
       - CORE_PEER_QUANTUM_KEYSTORE=/etc/hyperledger/fabric/quantum_keys
       - CORE_PEER_QUANTUM_KEYTYPES=["Falcon","Kyber"]
     volumes:
-      - /var/run/:/host/var/run/
+      - /var/run/docker.sock:/host/var/run/docker.sock
       - ./keys:/etc/hyperledger/fabric/quantum_keys
       - ./crypto-config/peerOrganizations/Hospital_B.example.com/peers/peer0.Hospital_B.example.com/msp:/etc/hyperledger/fabric/msp
       - ./crypto-config/peerOrganizations/Hospital_B.example.com/peers/peer0.Hospital_B.example.com/tls:/etc/hyperledger/fabric/tls
@@ -493,7 +517,10 @@ services:
       - "7061:7061"
       - "9445:9444"
     depends_on:
-      - couchdb
+      couchdb:
+        condition: service_started
+      cli:
+        condition: service_healthy
     networks:
       quantum_sip_default:
         aliases:
@@ -514,14 +541,21 @@ services:
     container_name: orderer.example.com
     image: hyperledger/fabric-orderer:3.0.0
     platform: linux/arm64
+    # No restart policy previously meant a crash (e.g. the tlsca.example.com
+    # x509 "unknown authority" panic seen in orderer-diag.log) left the
+    # orderer permanently dead while the peers - which do have
+    # restart: unless-stopped - kept running, silently splitting the
+    # cluster. Match the peers' policy so a transient crash self-heals
+    # instead of requiring a manual `docker compose up` to notice and fix.
+    restart: unless-stopped
     deploy:
       resources:
         limits:
-          cpus: '2'
-          memory: 2G
+          cpus: '1.5'
+          memory: 1.5G
         reservations:
-          cpus: '1'
-          memory: 2G
+          cpus: '0.5'
+          memory: 512M
     environment:
       # Core Configuration
       - FABRIC_LOGGING_SPEC=DEBUG  # Change from INFO to DEBUG
@@ -592,13 +626,16 @@ services:
       - "8443:8443"
       - "9443:9443"
     healthcheck:
-      test: [ "CMD", "curl", "-f", "--insecure", "https://localhost:8443/healthz" ]
+      test: [ "CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8443' || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
     depends_on:
-      - couchdb
+      couchdb:
+        condition: service_started
+      cli:
+        condition: service_healthy
     networks:
       - quantum_sip_default
     dns:
@@ -632,8 +669,24 @@ services:
       - FABRIC_CFG_PATH=/etc/hyperledger/fabric/config
     working_dir: /opt/gopath/src/github.com/hyperledger/fabric/peer
     command: /bin/bash -c "chmod +x /entrypoint.sh && /entrypoint.sh"
+    # entrypoint.sh (bind-mounted below) generates crypto-config the first
+    # time this container starts and touches crypto/.generated.ok when
+    # done. Nothing else in this file previously waited on that - peers
+    # and the orderer only depended on couchdb, so a fresh (or wiped)
+    # crypto-config/ could have peer0.Hospital_A/B and the orderer racing
+    # to read their MSP/TLS material before cli had finished writing it,
+    # producing errors like "could not load a valid signer certificate...
+    # no such file or directory" on a from-scratch bring-up. This
+    # healthcheck plus the depends_on: cli additions below close that
+    # race.
+    healthcheck:
+      test: [ "CMD-SHELL", "test -f /opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/.generated.ok || exit 1" ]
+      interval: 5s
+      timeout: 3s
+      retries: 120
+      start_period: 5s
     volumes:
-      - /var/run/:/host/var/run/
+      - /var/run/docker.sock:/host/var/run/docker.sock
       - ./entrypoint.sh:/entrypoint.sh
       - ./chaincode:/opt/gopath/src/github.com/hyperledger/fabric/peer/chaincode
       - ./crypto-config:/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/

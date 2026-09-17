@@ -25,5 +25,17 @@ RUN mkdir -p /app/logs /app/keys /app/hedera-bridge
 COPY hedera_bridge.py /app/
 COPY ./sip_connect /app/sip_connect
 
+# The Falcon/Kyber .so files checked into sip_connect/ are prebuilt on
+# whatever machine last ran the compile scripts (often macOS -> Mach-O),
+# which will not load in this Linux image ("invalid ELF header"). Rebuild
+# both here, inside the actual Linux build environment, so the binaries
+# always match this container's real OS/arch instead of whatever host
+# they happened to be compiled on last.
+RUN cd /app/sip_connect && bash compile_falcon_library.sh \
+    && cd /app/sip_connect/kyber/ref \
+    && cc -shared -fPIC -Wall -Wextra -Wpedantic -Wmissing-prototypes -Wredundant-decls -Wshadow -Wpointer-arith -O3 -fomit-frame-pointer -DKYBER_K=2 \
+        kem.c indcpa.c polyvec.c poly.c ntt.c cbd.c reduce.c verify.c symmetric-shake.c fips202.c randombytes.c \
+        -o libpqcrystals_kyber512_ref.so
+
 # Default command
 CMD ["python", "hedera_bridge.py"]

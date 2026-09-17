@@ -8,6 +8,8 @@ second hand-maintained list of services/ports.
 from __future__ import annotations
 
 import functools
+import os
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +32,50 @@ ORGANIZATIONS = ["Hospital_A", "Hospital_B"]
 INTERNAL_SERVICE_HINTS: dict[str, tuple[str, int]] = {
     "mqtt": ("mqtt", 1883),
 }
+
+
+@functools.lru_cache(maxsize=1)
+def docker_binary() -> str:
+    """Resolve an absolute path to the `docker` CLI.
+
+    subprocess.run(["docker", ...]) only works if "docker" is on *this
+    process's* PATH - and that's often not the same PATH an interactive
+    terminal has. management_api is commonly started from an IDE run
+    configuration or some other non-login-shell context on macOS, which
+    frequently omits Docker Desktop's/Homebrew's bin directories (they're
+    normally added by ~/.zshrc or ~/.zprofile, which those launchers don't
+    source). shutil.which("docker") reflects that same narrow PATH, so we
+    fall back to the well-known install locations before giving up and
+    returning the bare name (so callers still get a clear "not found"
+    error if truly missing).
+    """
+    found = shutil.which("docker")
+    if found:
+        return found
+    for candidate in (
+        "/usr/local/bin/docker",
+        "/opt/homebrew/bin/docker",
+        str(Path.home() / ".docker" / "bin" / "docker"),
+        "/Applications/Docker.app/Contents/Resources/bin/docker",
+    ):
+        path_obj = Path(candidate)
+        if path_obj.exists():
+            # docker itself shells out to helpers by bare name - notably
+            # docker-credential-desktop for registry auth, even on
+            # anonymous pulls, whenever ~/.docker/config.json sets
+            # "credsStore": "desktop" (Docker Desktop's default). Those
+            # child-process lookups use *this process's* PATH too, so
+            # finding docker itself isn't enough - the helper lives right
+            # next to it, and needs its directory on PATH for docker's own
+            # exec.LookPath to succeed. Fix it once, here, so every caller
+            # (and everything docker itself execs) benefits without each
+            # subprocess.run() needing its own env= override.
+            bin_dir = str(path_obj.parent)
+            path_parts = os.environ.get("PATH", "").split(os.pathsep)
+            if bin_dir not in path_parts:
+                os.environ["PATH"] = os.pathsep.join([bin_dir, *path_parts])
+            return candidate
+    return "docker"
 
 
 @functools.lru_cache(maxsize=1)
