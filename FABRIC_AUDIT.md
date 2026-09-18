@@ -76,6 +76,23 @@ worth fixing before this touches anything that isn't test data.
    fail in exactly the kind of restricted environment this project has already been built in. Fix is either
    `go mod vendor` (checked into each chaincode module) or moving to Fabric's chaincode-as-a-service (ccaas)
    pattern with a pre-built image - both are standard, documented options; right now this repo does neither.
+
+   **Researched, not yet applied:** confirmed against Fabric's own docs - `peer lifecycle chaincode package`
+   only tars the source, the real `go build` happens later inside the peer's ephemeral chaincode build
+   container via the external-builder framework, and Fabric's "Writing Your First Chaincode" doc states
+   plainly that a chaincode's non-stdlib dependencies "must be included in your chaincode package when it is
+   installed to a peer" - i.e. don't assume that build container can reach a module proxy
+   (https://hyperledger-fabric.readthedocs.io/en/latest/chaincode4ade.html). `go mod vendor` is the documented
+   fix, not a workaround: run `go mod tidy && go mod vendor` inside each of the three `chaincode/*/` module
+   directories, then commit the resulting `vendor/` folder alongside `go.mod`/`go.sum`. Compared to migrating to
+   chaincode-as-a-service (ccaas) - which relocates the build step off the peer but doesn't remove the network
+   requirement, and adds a long-lived service + connection/TLS plumbing per chaincode - vendoring is the right
+   fit here: three small modules, one dependency each, zero changes needed to `management_api/routers/fabric.py`
+   or the docker-compose deploy flow. Practically, this needs to run inside the `cli` container (it already has
+   Go 1.21 installed per `Dockerfile.cli`, and `chaincode/` is bind-mounted into it at
+   `/opt/gopath/src/github.com/hyperledger/fabric/peer/chaincode` per `docker-compose.yml`), so it has to wait
+   for the stack to be up - not run from a bare shell that lacks both `go` and network access to
+   `proxy.golang.org`.
 3. **Fabric version is pinned to exactly `3.0.0` for peers/orderer, but the `cli` image floats on `:latest`.**
    `docker-compose.yml` and `Dockerfile.peer` pin `hyperledger/fabric-peer:3.0.0` /
    `hyperledger/fabric-orderer:3.0.0` explicitly, but `Dockerfile.cli` builds from
