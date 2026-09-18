@@ -6,6 +6,46 @@ https://github.com/user-attachments/assets/113ddce1-e744-4be9-b4b7-4c4ee51ac121
 
 This project implements a quantum-resistant hypothetical healthcare information exchange platform using Hyperledger Fabric and Hedera Hashgraph, with post-quantum cryptography (PQC) integrated throughout all communication layers.
 
+## Why This Architecture
+
+It's easy to look at this repo - a Fabric ledger, post-quantum crypto, SIP telephony, MQTT, libp2p,
+and a Hedera/wallet layer all in one `docker-compose.yml` - and assume it's scope creep. It isn't; it's
+three deliberate layers of one thesis, and it's worth stating that thesis plainly rather than leaving it
+implicit in the service list:
+
+1. **Blockchain as the verification/identity layer for the Internet of Things.** Most IoT device identity
+   today is weak - shared certs, long-lived keys, no real chain of trust. A ledger that every device's
+   identity and every transaction is checked against is a stronger model, and it needs to exist *before*
+   quantum computers make today's crypto (the keys most of that identity infrastructure is built on)
+   forgeable - not after. That's what Hyperledger Fabric plus Falcon-1024/Kyber-512 is: the verification
+   layer, built quantum-safe from the start instead of retrofitted later under time pressure.
+2. **A secured, unified communication network for different device types to talk to each other.**
+   Verification alone doesn't help if devices still exchange data over something quantum-vulnerable, and
+   real IoT deployments aren't one protocol - they're SIP-based telephony, MQTT for lightweight
+   sensor/device messaging, and libp2p for peer discovery between nodes, all needing to carry
+   quantum-secured traffic. That's what Asterisk, MQTT, `quantum_srtp`, and the `libp2p-bridge` services
+   are: not a telephony feature bolted onto a blockchain demo, but the second layer of the same thesis -
+   secure device-to-device communication.
+3. **Device-to-device payments.** Once devices can verify each other and talk to each other securely, the
+   natural next capability is transacting with each other directly - a machine economy, not just a
+   machine network. That's what the Hedera integration and the per-device wallet model in
+   `chaincode/quantum_records` (master wallets, per-device sub-wallets with daily spend limits) are aiming
+   at. This layer is also the least finished of the three right now - see Current Status and
+   Troubleshooting below - which is expected: it's the layer that depends on the other two working first,
+   not a sign it was an afterthought.
+
+The two "Hospital" organizations in this repo are a concrete instance of that thesis, not the point of it:
+two separate organizations' infrastructure needing to verify each other's identity, communicate securely,
+and (eventually) transact, is the same shape of problem whether the "devices" are hospitals, IoT sensors,
+or anything else that needs quantum-safe trust between parties that don't already trust each other. The
+healthcare framing made the demo concrete; the architecture underneath is meant to generalize.
+
+One practical consequence of treating this as three layers rather than one flat stack: they don't all have
+to be equally mature at the same time for the project to be making real progress. Layer 1 (Fabric + PQC)
+is the part that has to be solid, because the other two only mean something once verification actually
+works. Layers 2 and 3 can legitimately be "designed for and partially wired up" while layer 1 gets
+hardened, without that being a step backward on the overall thesis.
+
 ## Current Status (as of September 2026)
 
 This is an actively developed prototype, not a production system. Current
