@@ -134,3 +134,10 @@ Claude outputs/
 agents/**/.alert_state.json
 agents/**/.guidance.json
 management_api/.ops_alert_state.json
+
+# Ops agent implementation + playbook skill - kept locally, not published.
+# (Runtime state files agents/**/.alert_state.json / .guidance.json were
+# already gitignored above; this excludes the actual agent code/docs too.)
+agents/ops_agent/agent.py
+skills/hyperledger-fabric-ops-agent/
+*.bak
