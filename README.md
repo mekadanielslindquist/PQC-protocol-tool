@@ -52,9 +52,17 @@ This is an actively developed prototype, not a production system. Current
 state of the Docker stack:
 
 - **Builds and comes up.** All services build clean and reach a running
-  state: both Fabric peers, the orderer, `cli`, `couchdb`, `wallet-service`,
-  `asterisk`, `quantum_sip`/`quantum_srtp`/`quantum_mqtt`, and both
-  `libp2p-bridge` services all start successfully with `docker compose up -d`.
+  state. The compose file is now split into profiles (see Setup and
+  Configuration below) - a plain `docker compose up -d` brings up just the
+  core Fabric/PQC layer (both peers, the orderer, `cli`, `couchdb`); the
+  communications layer (`asterisk`, `quantum_sip`/`quantum_srtp`/
+  `quantum_mqtt`, `mqtt`, both `libp2p-bridge` services) and payments layer
+  (`wallet-service`, `hedera-bridge`) only come up with `--profile comms`
+  and `--profile payments`. This split - and dropping the unused `minio`/
+  `timescaledb` services outright, since neither is referenced anywhere in
+  the actual project code - cut the default container count from 17 to 5,
+  which was a real factor in repeated Docker Desktop VM hangs on a single
+  laptop.
 - **Channel creation now works end-to-end.** Getting here meant tracking
   down five separate, independently-diagnosed bugs in the Fabric config
   path - underscores in MSP IDs and org names tripping Fabric's
@@ -204,9 +212,24 @@ The system implements two quantum-resistant algorithms:
    ./init-quantum.sh generate
    ```
 
-4. Start the network:
+4. Start the network. The stack is split into Docker Compose profiles so
+   you're not forced to bring up all ~14 containers every time:
+
    ```bash
+   # Core layer: both Fabric peers, orderer, couchdb, cli - the PQC
+   # identity/verification layer. This is all a plain `up -d` starts.
    docker-compose up -d
+
+   # + communications layer: mqtt, quantum_sip/srtp/mqtt, asterisk, both
+   # libp2p-bridge services
+   docker-compose --profile comms up -d
+
+   # + payments layer: wallet-service, hedera-bridge (see Current Status -
+   # the Hedera side of this is still a stub, don't expect real transactions)
+   docker-compose --profile payments up -d
+
+   # everything at once
+   docker-compose --profile comms --profile payments up -d
    ```
 
 ### Python dependencies

@@ -40,6 +40,7 @@ x-quantum-service-config: &quantum-service-config
 services:
   quantum_sip:
     <<: *quantum-service-config
+    profiles: ["comms"]
     healthcheck:
       test: [ "CMD-SHELL", "python3 -c 'import urllib.request; print(\"Attempting health check\"); urllib.request.urlopen(\"http://localhost:8000\"); print(\"Health check successful\")' || exit 1" ]
       interval: 30s
@@ -61,8 +62,6 @@ services:
     depends_on:
         couchdb:
           condition: service_healthy
-        minio:
-          condition: service_healthy
         mqtt:
           condition: service_healthy
     ports:
@@ -78,8 +77,6 @@ services:
     environment:
       - PYTHONPATH=/app:/app/sip_connect/kyber:/app/sip_connect/PQClean/crypto_sign/falcon-1024/aarch64
       - LD_LIBRARY_PATH=/app/sip_connect/PQClean/crypto_sign/falcon-1024/aarch64:/app/sip_connect/kyber/ref
-      - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=minioadmin
       - QUANTUM_BATCH_SIZE=1000
       # Add MQTT-related environment variables
       - MQTT_BROKER_HOST=mqtt
@@ -87,6 +84,7 @@ services:
     command: python quantum_services_init.py
 
   asterisk:
+      profiles: ["comms"]
       security_opt:
         - no-new-privileges:true
       ulimits:
@@ -146,7 +144,7 @@ services:
       environment:
         - PYTHONPATH=/app:/app/sip_connect/kyber:/app/sip_connect/PQClean/crypto_sign/falcon-1024/aarch64
         - LD_LIBRARY_PATH=/app/sip_connect/PQClean/crypto_sign/falcon-1024/aarch64:/app/sip_connect/kyber/ref
-        - ASTERISK_SIP_SECRET=VISUALintelligence20**
+        - ASTERISK_SIP_SECRET=${ASTERISK_SIP_SECRET}
         - ASTERISK_ORG_ID=Hospital_A
         - QUANTUM_ENHANCED_SRTP=true
         - KYBER_KEY_FILE=/etc/asterisk/keys/kyber_private.key
@@ -163,6 +161,7 @@ services:
 
   quantum_srtp:
       <<: *quantum-service-config
+      profiles: ["comms"]
       deploy:
         resources:
           limits:
@@ -201,6 +200,7 @@ services:
 
   quantum_mqtt:
       <<: *quantum-service-config
+      profiles: ["comms"]
       stop_grace_period: 30s
       init: true
       deploy:
@@ -275,6 +275,7 @@ services:
 
   # Updated wallet-service with Hedera integration
   wallet-service:
+    profiles: ["payments"]
     build: ./wallet-service
     restart: unless-stopped
     volumes:
@@ -302,6 +303,7 @@ services:
 
   # New service for Hedera-Fabric bridge
   hedera-bridge:
+    profiles: ["payments"]
     build:
       context: .
       dockerfile: Dockerfile.hedera-bridge
@@ -713,44 +715,8 @@ services:
     networks:
       - quantum_sip_default
 
-  minio:
-    healthcheck:
-      test: [ "CMD", "mc", "ready", "local" ]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    image: quay.io/minio/minio:latest
-    platform: linux/arm64
-    ports:
-      - "9000:9000"  # API
-      - "9001:9001"  # Console
-    environment:
-      - MINIO_ROOT_USER=minioadmin
-      - MINIO_ROOT_PASSWORD=minioadmin
-    volumes:
-      - ./minio-data:/data
-    command: server /data --console-address ":9001"
-
-  timescaledb:
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    image: timescale/timescaledb:latest-pg15
-    platform: linux/arm64
-    container_name: timescaledb
-    ports:
-      - "5432:5432"
-    environment:
-      - POSTGRES_PASSWORD=sensordatapassword
-      - POSTGRES_DB=sensordb
-    volumes:
-      - ./timescaledb-data:/var/lib/postgresql/data
-
   mqtt:
+    profiles: ["comms"]
     image: eclipse-mosquitto
     platform: linux/arm64
     ports:
@@ -778,6 +744,7 @@ services:
       - ./keys:/app/keys
       - ./logs:/app/logs
       - ./certificates:/app/certificates
+    profiles: ["comms"]
     ports:
       - "4001:4001"
       - "8085:8085"
@@ -852,6 +819,7 @@ services:
       - ./keys:/app/keys
       - ./logs:/app/logs
       - ./certificates:/app/certificates
+    profiles: ["comms"]
     ports:
       - "4002:4001"
       - "8086:8085"
@@ -894,10 +862,6 @@ volumes:
   quantum_keys:
     driver: local
   couchdb:
-    driver: local
-  minio-data:
-    driver: local
-  timescaledb-data:
     driver: local
   peer0_Hospital_A:
   peer0_Hospital_B:
